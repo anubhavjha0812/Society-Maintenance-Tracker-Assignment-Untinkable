@@ -43,3 +43,108 @@ Decisions:
   checkpointed and reviewable.
 
 Nothing runs end-to-end yet — this step is just repo + tracking setup.
+
+-----------------------------------------------------------------------
+STEP 1 — Backend scaffold + Prisma schema
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- Scaffolded /backend as a standalone TypeScript + Fastify project
+  (package.json, tsconfig with strict mode + NodeNext resolution).
+- Wrote prisma/schema.prisma implementing every table from the spec's
+  data model: Society, User, Complaint, ComplaintPhoto,
+  ComplaintStatusHistory, Notice, NotificationLog. Every tenant-owned
+  table carries society_id, matching the non-negotiable multi-tenancy
+  rule. Composite indexes added on (society_id, is_overdue, priority,
+  created_at) for the admin complaint list since that's the exact sort
+  order the spec asks for (overdue -> priority -> age).
+- Added src/config/env.ts: all required env vars (Neon URL, Better-Auth
+  secret, Upstash Redis URL, R2 credentials, Resend key) validated with
+  zod at boot, so a missing/malformed env var fails fast with a clear
+  message instead of a confusing runtime error later.
+- Added src/lib/pagination.ts: cursor helpers (encode/decode a
+  base64url({createdAt, id}) cursor, buildPage()) used by every list
+  endpoint — never offset/page-number, per spec.
+- Added src/lib/errors.ts: a small typed AppError + Fastify error
+  handler mapping it to the right HTTP status/JSON shape.
+- Added src/plugins/prisma.ts and src/plugins/redis.ts: decorate the
+  Fastify instance with a shared PrismaClient and ioredis connection,
+  both torn down cleanly on server close.
+- Wired app.ts: CORS scoped to FRONTEND_URL, global error handler,
+  /healthz, and route registration under /api/v1. complaints/notices/
+  dashboard/media route modules are stubbed as empty plugins for now —
+  they get filled in during their own Build Order steps later in this
+  log, so the app always compiles and boots as each step lands.
+- Ran `npx prisma validate` and `npx prisma generate` successfully, and
+  `npm run typecheck` passes clean.
+
+Decisions / deviations from the literal spec text:
+- Added two fields beyond the spec's literal table list, both required
+  by the spec's own *functional* requirements: Society.invite_code
+  (unique) — needed because the spec asks for "a society-selection or
+  invite-code flow" for registration, and NotificationLog.idempotency_key
+  (unique) — the spec explicitly says "every send attempt is idempotent
+  (job carries a unique key) and logged to NotificationLog", which only
+  works if that key is a real column. Both are additive, not deviations
+  from the schema's intent.
+- current_status on Complaint is a denormalized read column kept in sync
+  by whichever request/job appends a ComplaintStatusHistory row — the
+  history table is the source of truth; current_status exists purely so
+  list/filter queries don't need to join+aggregate history on every read.
+
+-----------------------------------------------------------------------
+STEP 2 — Better-Auth + RBAC middleware
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- src/modules/auth/auth.ts: Better-Auth instance using the Prisma
+  adapter, with additionalFields (role, societyId, flatNumber, phone) on
+  the user model. A `before` hook on POST /sign-up/email resolves a
+  client-supplied inviteCode to a Society and injects societyId + role
+  into the signup body server-side — the client can never set societyId
+  or role directly on signup.
+- src/modules/auth/routes.ts: bridges Fastify's raw request into a
+  Web-standard Request/Response so Better-Auth's own fetch-style handler
+  can serve every /api/v1/auth/* route (Better-Auth doesn't ship a
+  first-party Fastify adapter, so this bridge is the standard
+  integration pattern for frameworks it doesn't natively support).
+- src/plugins/rbac.ts: on every request, resolves the Better-Auth
+  session and decorates request.currentUser (id, role, societyId) if
+  present. Exposes requireAuth and requireRole(...roles) as reusable
+  preHandler hooks. Every protected route in later steps derives
+  society_id exclusively from request.currentUser — never from a
+  client-supplied field — which is what makes cross-tenant leakage
+  impossible by construction, per the spec's Multi-Tenancy section.
+- Rate limiting (@fastify/rate-limit, 20 req/min) applied to the whole
+  /api/v1/auth/* group in app.ts, satisfying the spec's "rate limiting
+  on /auth/* at minimum" requirement.
+- src/plugins/idempotency.ts: generic Idempotency-Key header support for
+  POST/PATCH (spec's API Design section) using Redis — first request
+  with a given key runs normally and its 2xx response is cached for 24h;
+  a replay with the same key returns the cached response instead of
+  re-executing. Scoped per-tenant + per-route so keys can't collide
+  across societies or endpoints.
+
+Decisions:
+- better-auth v1.7.1 (the version that actually installed) ships its
+  Prisma adapter as a separate package, @better-auth/prisma-adapter, not
+  a `better-auth/adapters/prisma` subpath — confirmed by reading the
+  installed package's own type declarations rather than assuming.
+  Adjusted the import accordingly.
+- better-auth's own dependency tree requires zod ^4; this project's own
+  code (env validation, later request schemas) was aligned to zod ^4 too
+  rather than pinning two majors side by side, avoiding an
+  --legacy-peer-deps install and keeping one zod API surface throughout
+  the backend.
+- Session/hook typing: used Better-Auth's documented createAuthMiddleware
+  wrapper (from better-auth/api) for the sign-up hook instead of a bare
+  async function, since that's what gives the callback a properly typed
+  ctx.path/ctx.body — confirmed against the installed package's type
+  declarations.
+- Not yet tested against a live Neon database or a real browser signup
+  flow (no cloud credentials exist yet in this environment) — verified
+  so far only via `prisma validate`, `prisma generate`, and
+  `npm run typecheck`, all passing. Full auth flow needs to be
+  smoke-tested once the user has real Neon + Better-Auth env vars set.

@@ -4,3 +4,14 @@ COMMANDS LOG — one line per command, short brief
 --- STEP 0 ---
 node -v && npm -v && which pnpm && git --version   # checked available tooling in this environment
 git init -b main                                    # created local git repo, branch "main", no remote
+
+--- STEP 1 ---
+mkdir -p backend/src/{config,plugins,modules/...,queue/workers,lib} backend/prisma   # backend folder skeleton
+cd backend && npm install                            # installed Fastify, Prisma, Better-Auth, BullMQ, etc.
+DATABASE_URL=... npx prisma validate                 # validated schema.prisma (placeholder URL, no live DB yet)
+DATABASE_URL=... npx prisma generate                 # generated Prisma Client from schema
+npm run typecheck                                     # tsc --noEmit, backend compiles clean
+
+--- STEP 2 ---
+rm -f package-lock.json && npm install                # re-resolved deps after fixing better-auth adapter import + zod v4 alignment
+npm run typecheck                                     # confirmed auth/rbac/idempotency modules compile clean

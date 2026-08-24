@@ -1,0 +1,180 @@
+// Society Maintenance Tracker — Prisma schema
+// Multi-tenant by construction: every tenant-owned table carries society_id.
+// ComplaintStatusHistory is append-only — see docs/SYSTEM_DESIGN.md; the
+// application layer must never issue UPDATE/DELETE against it.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  resident
+  society_admin
+  super_admin
+}
+
+enum Priority {
+  Low
+  Medium
+  High
+}
+
+enum ComplaintStatus {
+  Open
+  InProgress
+  Resolved
+}
+
+enum HistoryStatus {
+  Open
+  InProgress
+  Resolved
+  Reopened
+}
+
+enum NotificationChannel {
+  email
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+}
+
+model Society {
+  id                  String   @id @default(cuid())
+  name                String
+  inviteCode          String   @unique @map("invite_code")
+  overdueThresholdDays Int     @default(7) @map("overdue_threshold_days")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  users        User[]
+  complaints   Complaint[]
+  notices      Notice[]
+  statusEvents ComplaintStatusHistory[]
+  notifications NotificationLog[]
+
+  @@map("societies")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  societyId    String   @map("society_id")
+  name         String
+  email        String
+  phone        String?
+  passwordHash String   @map("password_hash")
+  role         Role     @default(resident)
+  flatNumber   String?  @map("flat_number")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  society           Society                   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  complaints        Complaint[]
+  statusEventsActed ComplaintStatusHistory[]
+  notices           Notice[]
+  notifications     NotificationLog[]
+
+  @@unique([societyId, email])
+  @@index([societyId])
+  @@map("users")
+}
+
+model Complaint {
+  id            String          @id @default(cuid())
+  societyId     String          @map("society_id")
+  residentId    String          @map("resident_id")
+  category      String
+  description   String
+  priority      Priority        @default(Medium)
+  currentStatus ComplaintStatus @default(Open) @map("current_status")
+  isOverdue     Boolean         @default(false) @map("is_overdue")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  society      Society                   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  resident     User                      @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  photos       ComplaintPhoto[]
+  statusEvents ComplaintStatusHistory[]
+
+  // Overdue sweep and admin list both filter/sort on these together.
+  @@index([societyId, isOverdue, priority, createdAt])
+  @@index([societyId, currentStatus])
+  @@index([residentId])
+  @@map("complaints")
+}
+
+model ComplaintPhoto {
+  id               String   @id @default(cuid())
+  complaintId      String   @map("complaint_id")
+  objectStorageKey String   @map("object_storage_key")
+  contentType      String   @map("content_type")
+  sizeBytes        Int      @map("size_bytes")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
+  @@map("complaint_photos")
+}
+
+// Append-only: every status change is a new row. Never updated, never
+// deleted. current_status on Complaint is a denormalized read model kept
+// in sync by whichever request/job appends the row.
+model ComplaintStatusHistory {
+  id          String        @id @default(cuid())
+  complaintId String        @map("complaint_id")
+  societyId   String        @map("society_id")
+  status      HistoryStatus
+  note        String?
+  actorId     String        @map("actor_id")
+  timestamp   DateTime      @default(now())
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  society   Society   @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  actor     User      @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId, timestamp])
+  @@index([societyId])
+  @@map("complaint_status_history")
+}
+
+model Notice {
+  id          String   @id @default(cuid())
+  societyId   String   @map("society_id")
+  title       String
+  body        String
+  isImportant Boolean  @default(false) @map("is_important")
+  postedBy    String   @map("posted_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  poster  User    @relation(fields: [postedBy], references: [id], onDelete: Cascade)
+
+  @@index([societyId, isImportant, createdAt])
+  @@map("notices")
+}
+
+model NotificationLog {
+  id                String              @id @default(cuid())
+  societyId         String              @map("society_id")
+  userId            String              @map("user_id")
+  channel           NotificationChannel @default(email)
+  eventType         String              @map("event_type")
+  status            NotificationStatus  @default(queued)
+  providerMessageId String?             @map("provider_message_id")
+  idempotencyKey    String              @unique @map("idempotency_key")
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  society Society @relation(fields: [societyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([societyId])
+  @@index([userId])
+  @@map("notification_logs")
+}
