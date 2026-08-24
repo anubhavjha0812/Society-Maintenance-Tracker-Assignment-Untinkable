@@ -1,0 +1,136 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useCurrentUser } from "@/lib/useCurrentUser";
+import { AppShell } from "@/components/AppShell";
+import { usePaginatedList } from "@/lib/usePaginatedList";
+import { Badge, statusTone, priorityTone } from "@/components/ui/Badge";
+import { Select } from "@/components/ui/Field";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/Panel";
+import { formatAge } from "@/lib/format";
+import { COMPLAINT_CATEGORIES } from "@/lib/categories";
+import type { Complaint } from "@/lib/api-client";
+
+interface Filters {
+  category: string;
+  status: string;
+  priority: string;
+}
+
+export default function AdminComplaintsPage() {
+  const { user } = useCurrentUser(["society_admin", "super_admin"]);
+  const [filters, setFilters] = useState<Filters>({ category: "", status: "", priority: "" });
+
+  const { items, loading, loadingMore, nextCursor, loadMore } = usePaginatedList<Complaint>(
+    (cursor) => {
+      const params = new URLSearchParams({ limit: "25" });
+      if (cursor) params.set("cursor", cursor);
+      if (filters.category) params.set("category", filters.category);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.priority) params.set("priority", filters.priority);
+      return `/complaints?${params.toString()}`;
+    },
+    [user?.id, filters.category, filters.status, filters.priority],
+  );
+
+  if (!user) return null;
+
+  return (
+    <AppShell user={user}>
+      <h1 className="font-display text-display-sm text-ink">Complaints</h1>
+      <p className="mt-1 text-sm text-ink-soft">
+        Sorted overdue first, then by priority, then by how long they've waited.
+      </p>
+
+      <div className="mt-5 flex flex-wrap gap-3">
+        <Select
+          value={filters.category}
+          onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}
+          className="w-auto"
+        >
+          <option value="">All categories</option>
+          {COMPLAINT_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={filters.status}
+          onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
+          className="w-auto"
+        >
+          <option value="">All statuses</option>
+          <option value="Open">Open</option>
+          <option value="InProgress">In progress</option>
+          <option value="Resolved">Resolved</option>
+        </Select>
+        <Select
+          value={filters.priority}
+          onChange={(e) => setFilters((f) => ({ ...f, priority: e.target.value }))}
+          className="w-auto"
+        >
+          <option value="">All priorities</option>
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+        </Select>
+      </div>
+
+      <div className="mt-5 panel overflow-hidden">
+        {loading ? (
+          <p className="p-5 text-sm text-ink-soft">Loading…</p>
+        ) : items.length === 0 ? (
+          <div className="p-2">
+            <EmptyState title="No complaints match these filters" />
+          </div>
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-hairline text-xs uppercase tracking-wide text-ink-faint">
+                <th className="px-4 py-3 font-medium">Complaint</th>
+                <th className="px-4 py-3 font-medium">Priority</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Age</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((c) => (
+                <tr key={c.id} className="border-b border-hairline last:border-0 hover:bg-paper">
+                  <td className="px-4 py-3">
+                    <Link href={`/admin/complaints/${c.id}`} className="block">
+                      <span className="font-medium text-ink">{c.category}</span>
+                      <span className="ml-2 text-ink-faint">{c.description.slice(0, 60)}</span>
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge tone={priorityTone(c.priority)}>{c.priority}</Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge tone={statusTone(c.currentStatus)}>{c.currentStatus}</Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={c.isOverdue ? "font-medium text-rose" : "text-ink-soft"}>
+                      {formatAge(c.createdAt)}
+                      {c.isOverdue ? " · overdue" : ""}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {nextCursor ? (
+        <div className="mt-6 text-center">
+          <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "Loading…" : "Load more"}
+          </Button>
+        </div>
+      ) : null}
+    </AppShell>
+  );
+}

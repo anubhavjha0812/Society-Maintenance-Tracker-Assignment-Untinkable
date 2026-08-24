@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-paper text-ink antialiased;
+    font-feature-settings: "tnum" 1, "cv11" 1;
+  }
+
+  ::selection {
+    background: theme("colors.clay.soft");
+    color: theme("colors.clay.dark");
+  }
+
+  h1, h2, h3 {
+    @apply font-display;
+  }
+
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-paper-raised border border-hairline rounded-md;
+  }
+
+  .field-label {
+    @apply block text-xs font-medium uppercase tracking-wide text-ink-soft mb-1.5;
+  }
+
+  .text-input {
+    @apply w-full rounded border border-hairline bg-paper-raised px-3 py-2 text-[0.9375rem] text-ink placeholder:text-ink-faint outline-none transition-colors focus:border-clay focus:ring-1 focus:ring-clay;
+  }
+}

@@ -291,3 +291,133 @@ v5 (+ @fastify/cors v10, @fastify/rate-limit v10, fastify-plugin v5) —
 Fastify v5's setErrorHandler callback types its error parameter more
 strictly, so the handler in app.ts now explicitly types it as
 `FastifyError | AppError`.
+
+-----------------------------------------------------------------------
+STEP 3.5 — Added GET /complaints/:id
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+While building the frontend's complaint detail pages (resident and
+admin), realized the spec's literal endpoint list has no way to fetch a
+single complaint's core fields (category/description/priority/status) —
+only /complaints (list), /complaints/mine (list), and the sub-resources
+(/history, /status, /priority). Added GET /complaints/:id
+(backend/src/modules/complaints/service.ts getComplaintById +
+backend/src/modules/complaints/routes.ts), scoped the same way as
+everything else: residents only see their own, admins see any complaint
+in their society. This is the same judgment call as /media/confirm
+earlier — a natural, necessary REST resource the endpoint list didn't
+spell out but the functional requirements clearly need.
+
+-----------------------------------------------------------------------
+STEP 8 — Frontend (Next.js 14 + Tailwind)
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- Design tokens first (tailwind.config.ts, app/globals.css, app/layout.tsx
+  font loading), locking in the Step 0 design direction before any page
+  was written: warm paper background, near-black ink, one clay accent,
+  Fraunces (serif) for headings paired with Inter (grotesque) for body/UI,
+  flat hairline-bordered panels instead of shadow-heavy cards, real
+  <table> markup for admin lists with tabular numerals, lucide-react icons
+  used sparingly and monochrome. No blue/purple/indigo anywhere, no
+  glassmorphism, no emoji as UI icons.
+- lib/auth-client.ts: Better-Auth's React client, invite-code signup.
+- lib/api-client.ts: typed fetch wrapper against the backend, credentials
+  included, Idempotency-Key header support, typed domain models.
+- lib/usePaginatedList.ts: one hook wrapping the cursor-pagination
+  contract (`{items, nextCursor}`, `?cursor=`) reused by every list page
+  (resident complaints, admin complaints, notices) — never offset/page
+  state anywhere in the frontend either.
+- components/ui/*: Button, Badge (status/priority color mapping), Field
+  (Input/Textarea/Select), Panel/EmptyState — small, custom-styled
+  primitives rather than a generic component-library look.
+- Pages: /login, /register (invite-code + flat number + phone),
+  /complaints (mine), /complaints/new (create + optional photo via the
+  presign -> direct R2 PUT -> confirm flow), /complaints/[id] (detail +
+  history timeline), /notices, /admin (dashboard summary with a simple
+  bar breakdown by category), /admin/complaints (filterable table),
+  /admin/complaints/[id] (priority select, forward-status button, Reopen
+  button, note field), /admin/notices (create + list).
+- useCurrentUser() hook: wraps Better-Auth's session hook, redirects to
+  /login when signed out and to the right home when the signed-in role
+  doesn't match a page's `allow` list. This is a UX convenience only —
+  the backend's RBAC middleware is the real enforcement boundary, since a
+  client-side redirect can be bypassed but an API 403 can't.
+- Verified with `npm run typecheck` (clean) and a full `next build`
+  (clean production build, all 12 routes generated as static/dynamic
+  correctly).
+
+Decisions:
+- All data-fetching is client-side (useEffect + the api-client), not
+  server components reading cookies server-side. The frontend and
+  backend are on different origins/domains by design (Vercel + Render),
+  so a server component would need to manually forward the session
+  cookie to the backend fetch; client-side fetching with
+  credentials:'include' is simpler and was judged sufficient for an MVP
+  admin/resident tool that isn't SEO-sensitive.
+- Complaint categories are a fixed list (lib/categories.ts) — not
+  specified by the spec; documented as an assumption in README.md.
+- npm audit on the frontend still lists several Next.js advisories after
+  pinning to the latest 14.2.x patch — investigated each one; all are
+  scoped to Server Actions, Middleware, next/image, or a custom server,
+  none of which this app uses. Judged not worth a 2-major-version jump
+  to next@16 (which would also contradict the spec's explicit "Next.js
+  14" and require re-verifying App Router API changes) — see README.md
+  "Dependency notes" for the full reasoning.
+
+-----------------------------------------------------------------------
+STEP 9 — Seed script, README, SYSTEM_DESIGN.md, deploy configs
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- prisma/seed.ts: 3 demo societies (different overdue_threshold_days
+  each), one admin + 2-3 residents per society, complaints spanning every
+  status per society plus one deliberately old Open complaint per society
+  (created_at set further back than that society's own threshold, and
+  pre-marked is_overdue:true) so the overdue behavior is visible
+  immediately without waiting for the sweep job to run, and two notices
+  per society. Passwords are hashed with Better-Auth's own hashPassword()
+  (imported from better-auth/crypto) rather than a hand-rolled bcrypt
+  call, so the seeded accounts can actually sign in through the real auth
+  flow afterwards. All seeded accounts share one password
+  ("Password123!"), printed along with each account's email/invite code
+  when the script runs.
+- backend/render.yaml: single free web service, rootDir backend, build
+  runs prisma generate + tsc, start runs prisma migrate deploy then the
+  server (which boots the in-process BullMQ worker itself).
+- frontend/vercel.json: minimal Next.js config; env vars and the
+  "set Root Directory to frontend" instruction documented in README.md
+  instead of hardcoded, since Vercel env vars are a dashboard/project
+  setting, not something vercel.json should embed.
+- SYSTEM_DESIGN.md (728 words, under the 800 cap): complaint history
+  model, overdue detection, photo handling, notification flow — each
+  section states what was actually built and what the full-scale version
+  would change.
+- README.md: setup instructions for both apps, the full API table
+  (including the GET /complaints/:id addition), deployment steps for
+  Vercel + Render, every assumption made (collected from this file),
+  the Fastify v5 / Next.js 14.2.x dependency reasoning, and the
+  Kafka/sharding/microservices/multi-region deferral rationale the spec
+  asked for.
+
+Final verification pass (per the build plan):
+- Confirmed no `skip`/offset-based pagination exists anywhere in
+  backend/src (grep) — every list endpoint is cursor-based.
+- Confirmed no `.update()`/`.delete()` call exists against
+  complaintStatusHistory anywhere (grep) — genuinely append-only.
+- Confirmed no raw SQL string is built by template-literal concatenation
+  outside Prisma's own `Prisma.sql` tagged-template helper (grep) — every
+  raw query is parameterized.
+- `npm run typecheck` clean on backend; `npm run typecheck` and a full
+  production `next build` clean on frontend.
+
+What's NOT verified: no live Neon/Upstash/R2/Resend accounts exist in
+this environment, so nothing has run against real infrastructure — no
+real signup/login round-trip, no real email send, no real R2 upload, no
+real overdue sweep tick. This is the one gap between "compiles and is
+architecturally sound" and "known to work end-to-end" — closing it
+requires the user to provision the four free-tier accounts and run
+through README.md's Setup section.

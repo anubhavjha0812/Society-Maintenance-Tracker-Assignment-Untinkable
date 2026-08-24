@@ -98,6 +98,25 @@ async function getComplaintScoped(prisma: PrismaClient, id: string, societyId: s
   return complaint;
 }
 
+/**
+ * Not in the spec's literal endpoint list, but a detail view (resident's
+ * own complaint page, admin complaint page) needs a way to fetch one
+ * complaint's core fields — the listed endpoints only cover collections
+ * and sub-resources (history/status/priority). Residents may only fetch
+ * their own; admins any complaint in their society.
+ */
+export async function getComplaintById(
+  prisma: PrismaClient,
+  args: { id: string; societyId: string; residentId?: string },
+) {
+  const complaint = await prisma.complaint.findFirst({
+    where: { id: args.id, societyId: args.societyId, ...(args.residentId ? { residentId: args.residentId } : {}) },
+    include: { photos: true },
+  });
+  if (!complaint) throw Errors.notFound("Complaint not found");
+  return complaint;
+}
+
 export async function updatePriority(
   prisma: PrismaClient,
   args: { id: string; societyId: string; priority: Priority },

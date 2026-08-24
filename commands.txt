@@ -25,3 +25,18 @@ npm audit                                              # found 2 high severity a
 rm -rf node_modules package-lock.json && npm install   # reinstalled after bumping fastify 4->5, @fastify/cors and rate-limit to v10
 npm run typecheck                                      # confirmed no breakage after the major bump (fixed one error-handler type)
 npm audit                                              # 0 vulnerabilities
+
+--- STEP 8 (frontend) ---
+mkdir -p frontend/app frontend/components/ui frontend/lib   # frontend folder skeleton
+cd frontend && npm install                                   # Next.js 14, React 18, Tailwind, lucide-react, better-auth client
+npm run typecheck                                             # clean
+npm audit                                                     # flagged Next.js advisories; investigated (see documentation.txt)
+npm install (again, after bumping next to ^14.2.35)            # latest patched Next.js 14.x line
+NEXT_PUBLIC_API_URL=... NEXT_PUBLIC_R2_PUBLIC_BASE_URL=... npm run build   # full production build, 12/12 routes generated
+
+--- STEP 9 (seed, docs, deploy configs) ---
+npx tsc --noEmit ...  prisma/seed.ts                          # typechecked the seed script separately (outside src/ rootDir)
+cd ../backend && npm run typecheck                            # final backend typecheck after all steps
+grep -rn "skip:\|offset" backend/src                           # confirmed no offset pagination anywhere
+grep -rn "complaintStatusHistory\.(update|delete)" backend/src # confirmed history table is genuinely append-only
+grep -rn "\`SELECT\|\`UPDATE\|\`DELETE\|\`INSERT" backend/src   # confirmed no raw string-concatenated SQL outside Prisma.sql

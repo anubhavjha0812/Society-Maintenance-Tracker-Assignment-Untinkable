@@ -14,6 +14,7 @@ import {
   updatePriority,
   updateComplaintStatus,
   getComplaintHistory,
+  getComplaintById,
 } from "./service.js";
 import { decodeCursor, clampLimit } from "../../lib/pagination.js";
 import { decodeAdminCursor } from "./adminSort.js";
@@ -76,6 +77,20 @@ export default async function complaintsRoutes(app: FastifyInstance) {
         to: query.to,
         cursor: decodeAdminCursor(query.cursor),
         limit: clampLimit(query.limit),
+      });
+    },
+  );
+
+  app.get(
+    "/complaints/:id",
+    { schema: historySchema, preHandler: [app.requireAuth] },
+    async (request) => {
+      const user = request.currentUser!;
+      const { id } = request.params as { id: string };
+      return getComplaintById(app.prisma, {
+        id,
+        societyId: user.societyId,
+        residentId: user.role === "resident" ? user.id : undefined,
       });
     },
   );
