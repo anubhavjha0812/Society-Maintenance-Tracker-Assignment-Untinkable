@@ -74,19 +74,66 @@ prints (all use password `Password123!`), or register a new resident at
 
 ## Deployment
 
-- **Backend → Render**: point a Blueprint at `backend/render.yaml` (or
-  create a Web Service manually with root directory `backend`, build
-  command `npm install && npm run prisma:generate && npm run build`,
-  start command `npm run prisma:deploy && npm start`). Set every env var
-  from `backend/.env.example` in the Render dashboard.
-- **Frontend → Vercel**: import the repo, set **Root Directory** to
-  `frontend`, and set `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_R2_PUBLIC_BASE_URL`
-  in Project Settings → Environment Variables.
-- Set `BETTER_AUTH_URL` (backend) and `FRONTEND_URL` (backend) to your
-  real deployed URLs so cookies/CORS work — the frontend and backend are
-  on different domains in production, so Better-Auth's session cookie
-  needs `SameSite=None; Secure`, which its defaults already produce over
-  HTTPS.
+The repo has `render.yaml` at its root (Render's Blueprint auto-detection
+requires it there) and `frontend/vercel.json`. Deploy backend first —
+the frontend's `NEXT_PUBLIC_API_URL` needs the backend's live URL.
+
+### 1. Backend → Render
+
+1. [dashboard.render.com](https://dashboard.render.com) → **New +** →
+   **Blueprint** → connect this GitHub repo. Render finds `render.yaml`
+   automatically and proposes one free web service
+   (`society-tracker-backend`, root directory `backend`).
+2. Before the first deploy, it'll prompt for every env var marked
+   `sync: false` in `render.yaml`. Fill in:
+   - `DATABASE_URL` — your Neon connection string (the same one already
+     in `backend/.env` locally — reuse it, don't create a new database).
+   - `BETTER_AUTH_SECRET` — any random 32+ char string
+     (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+     locally to generate one).
+   - `BETTER_AUTH_URL` — leave a placeholder for now (e.g.
+     `https://society-tracker-backend.onrender.com`); Render shows you
+     the real assigned URL after the first deploy — come back and set
+     this to match exactly, then redeploy.
+   - `FRONTEND_URL` — same idea: placeholder now, the real Vercel URL
+     once you have it (step 2), then redeploy.
+   - `UPSTASH_REDIS_URL`, `R2_*`, `RESEND_*` — real values if you have
+     accounts for them (see Setup above); otherwise the app still
+     deploys and auth/complaints/notices work — only background jobs
+     (overdue sweep, notification emails) and photo uploads stay inactive
+     until these are real.
+3. Deploy. First boot runs `prisma migrate deploy` against your Neon
+   database automatically (via `startCommand` in `render.yaml`).
+
+### 2. Frontend → Vercel
+
+1. [vercel.com/new](https://vercel.com/new) → import the same repo.
+2. In the import screen (or Project Settings → General afterward), set
+   **Root Directory** to `frontend`.
+3. Project Settings → Environment Variables:
+   - `NEXT_PUBLIC_API_URL` — the Render backend URL from step 1 (no
+     trailing slash).
+   - `NEXT_PUBLIC_R2_PUBLIC_BASE_URL` — your R2 public bucket URL, or
+     leave any placeholder if you don't have R2 set up yet (photo links
+     just won't resolve).
+4. Deploy.
+
+### 3. Close the loop
+
+Go back to Render → your backend service → Environment, set
+`BETTER_AUTH_URL` to the backend's own real Render URL and `FRONTEND_URL`
+to the real Vercel URL from step 2, then trigger a redeploy. This matters
+because the frontend and backend are on different domains in production,
+so Better-Auth's session cookie needs `SameSite=None; Secure` — which its
+defaults only produce correctly once `baseURL`/`trustedOrigins` match the
+real deployed URLs, not placeholders.
+
+### 4. Seed the deployed database (optional, for demo accounts)
+
+From your machine, with `backend/.env`'s `DATABASE_URL` pointed at the
+same Neon database Render is using: `cd backend && npm run seed`. Prisma
+migrations already ran automatically on Render's first deploy (step 1),
+so this just adds the demo societies/accounts on top.
 
 ## API
 

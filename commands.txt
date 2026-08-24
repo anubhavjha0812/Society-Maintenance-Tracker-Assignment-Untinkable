@@ -78,5 +78,11 @@ curl GET /api/v1/dashboard/summary (as resident)                         # 403, 
 curl POST /api/v1/auth/update-user -d '{"role":"society_admin"}'          # confirms privilege-escalation guard (403)
 curl POST /api/v1/auth/update-user -d '{"flatNumber":"A-102"}'             # confirms legit updates still work (200)
 curl GET /api/v1/notices, GET /api/v1/complaints/mine                       # 200, correctly scoped/ordered
+
+--- STEP 14 (push to GitHub, deployment prep) ---
+git ls-remote https://github.com/anubhavjha0812/Society-Maintenance-Tracker-Assignment-Untinkable   # confirmed empty repo before pushing
+git remote add origin https://github.com/anubhavjha0812/Society-Maintenance-Tracker-Assignment-Untinkable.git
+git push -u origin main                                                       # pushed all local commits
+git mv backend/render.yaml render.yaml                                        # moved to repo root for Render Blueprint auto-detection
 cd ../backend && npm install                                      # re-locked better-auth to ^1.7.1 (matches what was actually resolved)
 npm run typecheck                                                 # clean, 0 vulnerabilities

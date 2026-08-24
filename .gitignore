@@ -11,3 +11,5 @@ coverage/
 .DS_Store
 .vercel/
 *.tsbuildinfo
+commands.txt
+documentation.txt

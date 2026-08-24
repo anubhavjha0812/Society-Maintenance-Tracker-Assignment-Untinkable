@@ -703,3 +703,39 @@ and actual email sends remain unverified beyond code review + the
 Redis-unavailable-degrades-gracefully behavior confirmed above. Postgres/
 Prisma/Better-Auth/Fastify/RBAC/idempotency are now genuinely verified
 against live infrastructure, not just compiled.
+
+-----------------------------------------------------------------------
+STEP 14 — Pushed to GitHub; deployment prep for submission
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- User provided a GitHub repo URL
+  (anubhavjha0812/Society-Maintenance-Tracker-Assignment-Untinkable),
+  confirmed empty via `git ls-remote` before pushing (nothing to
+  clobber), added as `origin`, pushed all 7 local commits to `main`.
+- Moved render.yaml from backend/render.yaml to the repo root. Render's
+  Blueprint auto-detection ("New +" -> "Blueprint") looks for
+  render.yaml at the repository root, not inside a subdirectory — the
+  file's own `rootDir: backend` field still tells Render which
+  subdirectory to actually build/run from, so no content change was
+  needed, just the location.
+- Rewrote README.md's Deployment section into a concrete, step-by-step
+  walkthrough (Render Blueprint env var prompts, Vercel root-directory
+  setting, the two-way BETTER_AUTH_URL/FRONTEND_URL chicken-and-egg
+  problem of needing each platform's real URL to configure the other,
+  and how to seed the deployed database afterward) — the previous
+  version was accurate but terser than what's needed when the user is
+  about to actually click through both dashboards for a submission.
+
+Decisions:
+- Did not create Render/Vercel/Upstash/R2/Resend accounts or click
+  through their dashboards — account creation and entering payment/
+  credential details on third-party sites are outside what this
+  assistant does on a user's behalf regardless of request; the README
+  walkthrough is written so the user can do those steps themselves
+  efficiently.
+- Did not attempt to install/authenticate gh, vercel, or render CLIs to
+  automate the deploy — none were present in this environment, and
+  setting up fresh CLI auth would itself require the account-creation
+  step above.
