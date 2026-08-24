@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { env } from "./config/env.js";
@@ -36,7 +36,7 @@ export async function buildApp() {
     global: false,
   });
 
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error: FastifyError | AppError, request, reply) => {
     if (error instanceof AppError) {
       reply.status(error.statusCode).send({ error: error.code, message: error.message });
       return;

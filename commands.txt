@@ -15,3 +15,13 @@ npm run typecheck                                     # tsc --noEmit, backend co
 --- STEP 2 ---
 rm -f package-lock.json && npm install                # re-resolved deps after fixing better-auth adapter import + zod v4 alignment
 npm run typecheck                                     # confirmed auth/rbac/idempotency modules compile clean
+
+--- STEPS 3-7 (complaints, bullmq, media, notices, dashboard) ---
+npm install                                           # added @aws-sdk/client-s3, s3-request-presigner
+npm run typecheck                                     # full API surface compiles clean
+
+--- Dependency security fix ---
+npm audit                                              # found 2 high severity advisories in fastify@4
+rm -rf node_modules package-lock.json && npm install   # reinstalled after bumping fastify 4->5, @fastify/cors and rate-limit to v10
+npm run typecheck                                      # confirmed no breakage after the major bump (fixed one error-handler type)
+npm audit                                              # 0 vulnerabilities

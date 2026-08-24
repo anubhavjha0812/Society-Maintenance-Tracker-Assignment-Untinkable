@@ -148,3 +148,146 @@ Decisions:
   so far only via `prisma validate`, `prisma generate`, and
   `npm run typecheck`, all passing. Full auth flow needs to be
   smoke-tested once the user has real Neon + Better-Auth env vars set.
+
+-----------------------------------------------------------------------
+STEP 3 — Complaints module
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- POST /complaints (resident): create with category/description/priority.
+- GET /complaints/mine (resident): own complaints, cursor-paginated.
+- GET /complaints (admin): filter by category/status/priority/date range,
+  sorted overdue -> priority -> age exactly as the spec requires, with
+  real cursor (keyset) pagination over that 3-key compound sort.
+- PATCH /complaints/:id/priority, PATCH /complaints/:id/status (writes
+  an append-only ComplaintStatusHistory row + mirrors current_status),
+  GET /complaints/:id/history.
+- Status transitions are forward-only (Open -> InProgress -> Resolved);
+  reopening a Resolved complaint is a distinct status value ("Reopened")
+  on the same PATCH .../status endpoint rather than a separate route,
+  since the spec's own endpoint list only names ".../status" (no
+  ".../reopen") — it writes a HistoryStatus.Reopened row and resets
+  current_status back to Open. This satisfies "add an explicit Reopen
+  action... rather than allowing silent edits" while staying inside the
+  spec's literal endpoint list.
+- Every status change also enqueues a notification job (see Step 4).
+
+Decisions:
+- Compound cursor pagination problem: Prisma Client's typed query API
+  can express the 3-key ORDER BY (is_overdue desc, priority desc,
+  created_at asc) fine, but can't express the "<"/">" comparisons on an
+  enum column needed for real keyset pagination across a 3-key cursor.
+  Solved with a parameterized prisma.$queryRaw (Prisma.sql tagged
+  template, never string concatenation — still honors "parameterized
+  queries only") that encodes the cursor as a Postgres row-value tuple
+  comparison. See backend/src/modules/complaints/adminSort.ts for the
+  full reasoning on sign-flipping ASC columns so a single tuple `<`
+  captures "next page" correctly.
+- Any status transition clears is_overdue back to false; only the
+  overdue-sweep job (Step 4) sets it true again, based on how long the
+  complaint has sat in Open since the transition. Keeps "never compute
+  overdue status inline on every read" true even across status changes.
+
+-----------------------------------------------------------------------
+STEP 4 — BullMQ (overdue sweep + notifications), in-process worker
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- queue/connection.ts + queue/queues.ts: a dedicated ioredis connection
+  for BullMQ (separate from the Fastify request-cache Redis connection),
+  two queues (overdue-sweep, notifications), and typed enqueue helpers.
+- queue/workers/overdueSweep.worker.ts: a repeatable job (every 5 min)
+  running one set-based UPDATE across all societies at once, each
+  compared against its own overdue_threshold_days via
+  `now() - make_interval(days => threshold)` — not a per-complaint loop,
+  and not computed inline on reads.
+- queue/workers/notification.worker.ts: consumes both job types
+  (complaint_status_changed, notice_posted). Every job's BullMQ jobId is
+  also the NotificationLog.idempotency_key, so (a) BullMQ itself refuses
+  a literal duplicate enqueue, and (b) the worker checks NotificationLog
+  for an existing "sent" row before sending, covering job
+  retries/redelivery. Status is logged queued -> sent/failed.
+- lib/email.ts: single sendEmail(to, subject, body) wrapping Resend —
+  the only file that imports the Resend SDK, so swapping providers later
+  never touches business logic (spec's explicit requirement).
+- server.ts starts both workers and schedules the repeatable sweep job
+  right after the Fastify API starts listening, in the same process —
+  per spec, since Render's free tier has no standalone worker product.
+
+Decisions:
+- Idempotency key granularity: complaint_status_changed jobs key off the
+  specific ComplaintStatusHistory row id (not complaintId+status), so
+  two different events that happen to land on the same status (e.g.
+  Resolved -> Reopened -> ... -> Resolved again) never collide.
+  notice_posted jobs key off (noticeId, residentId) since fan-out is
+  exactly one job per resident per notice.
+- Overdue sweep interval: spec says "runs every few minutes" without a
+  number; picked 5 minutes as a reasonable default for MVP traffic.
+
+-----------------------------------------------------------------------
+STEP 5 — R2 pre-signed media upload
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- lib/storage.ts: S3Client pointed at R2's S3-compatible endpoint;
+  presignComplaintPhotoUpload() returns a short-lived (5 min) pre-signed
+  PUT URL scoped to a key under societies/{societyId}/complaints/{id}/.
+- POST /media/presign (resident, must own the target complaint): returns
+  the signed URL + the key the client must upload to.
+- POST /media/confirm: after the client PUTs directly to R2 (app server
+  never sees the file bytes), this records the ComplaintPhoto row. It
+  double-checks the returned key is actually prefixed with this
+  resident's own society/complaint path before trusting it, so a client
+  can't register a photo row against an arbitrary storage key.
+
+Decisions:
+- Allowed content types restricted to common image types
+  (jpeg/png/webp/heic); max 10MB — not specified in the spec, chosen as
+  a sane default and documented here as an assumption.
+
+-----------------------------------------------------------------------
+STEP 6 — Notices
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- POST /notices (admin): create, optional is_important.
+- GET /notices: cursor-paginated, important-pinned-first then
+  newest-first. Reused the same row-value-tuple keyset pagination
+  approach as the admin complaint list (notices/noticeSort.ts) — simpler
+  here since both sort keys are DESC, so no sign-flipping is needed.
+- Posting an important notice fans out one notification job per resident
+  in the society onto the same BullMQ notifications queue used by
+  complaint status changes — never synchronous sends in the handler.
+
+-----------------------------------------------------------------------
+STEP 7 — Dashboard summary + Redis cache
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- GET /dashboard/summary (admin): counts by status, by category, total
+  overdue, scoped to the admin's society via Prisma groupBy aggregates.
+- Cached in Upstash Redis under dashboard:summary:{societyId} for 60s
+  exactly as the spec asks; nothing actively invalidates it early
+  (accepted staleness window, not worth the complexity for an MVP
+  dashboard).
+
+-----------------------------------------------------------------------
+Backend dependency note
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+After the full API surface was in place, `npm audit` flagged 2 high
+severity advisories in Fastify v4 (DoS via unbounded memory allocation
+in sendWebStream, a Content-Type validation bypass, and an HTTP/2 DDoS
+issue in its router dependency find-my-way). Since this is a brand-new
+project with no legacy v4-specific code to preserve, upgraded to Fastify
+v5 (+ @fastify/cors v10, @fastify/rate-limit v10, fastify-plugin v5) —
+`npm audit` now reports 0 vulnerabilities. One resulting type-level fix:
+Fastify v5's setErrorHandler callback types its error parameter more
+strictly, so the handler in app.ts now explicitly types it as
+`FastifyError | AppError`.
