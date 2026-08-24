@@ -40,3 +40,12 @@ cd ../backend && npm run typecheck                            # final backend ty
 grep -rn "skip:\|offset" backend/src                           # confirmed no offset pagination anywhere
 grep -rn "complaintStatusHistory\.(update|delete)" backend/src # confirmed history table is genuinely append-only
 grep -rn "\`SELECT\|\`UPDATE\|\`DELETE\|\`INSERT" backend/src   # confirmed no raw string-concatenated SQL outside Prisma.sql
+
+--- STEP 10 (visual verification) ---
+cd frontend && npm run dev (background)                        # started dev server standalone, no backend
+curl http://localhost:3000/login                                # confirmed 200 response
+[Chrome] navigate + screenshot /login, /register                # visually checked design direction
+[Chrome] window.innerHeight / scrollHeight check via console     # confirmed apparent layout gap was a screenshot artifact, not a real bug
+[Chrome] read_console_messages on /register                      # confirmed no errors
+npm run typecheck                                                # re-confirmed clean after removing deprecated tsconfig baseUrl
+lsof -ti:3000 | xargs kill -9                                     # stopped the dev server

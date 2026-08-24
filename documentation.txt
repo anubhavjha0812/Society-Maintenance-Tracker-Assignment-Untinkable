@@ -421,3 +421,40 @@ real overdue sweep tick. This is the one gap between "compiles and is
 architecturally sound" and "known to work end-to-end" — closing it
 requires the user to provision the four free-tier accounts and run
 through README.md's Setup section.
+
+-----------------------------------------------------------------------
+STEP 10 — Visual verification in a real browser
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- Ran the frontend dev server standalone (no backend running) and opened
+  /login and /register in an actual Chrome tab to check the design
+  direction actually reads the way Step 0/8 intended, not just that it
+  compiles. It does: warm paper background, dark editorial left panel
+  with the Fraunces serif headline, clay-accent "Sign in"/"Register"
+  eyebrow, flat hairline-bordered inputs — no purple/blue gradients, no
+  glassmorphism.
+- Noticed what looked like a layout bug on /register: a pale gap below
+  the two-column split instead of the dark panel running the full
+  viewport height. Investigated before assuming it was real: checked
+  `window.innerHeight` vs `document.documentElement.scrollHeight` via the
+  page's own console — they were equal (1067px both), meaning the actual
+  rendered page has no overflow/gap at all. The visual gap in the
+  screenshot was a capture-tool artifact (devicePixelRatio 0.9 scaling
+  mismatch), not a real CSS bug.
+- Switched AuthLayout's two-column container from CSS Grid
+  (`grid lg:grid-cols-2`) to Flexbox (`flex lg:flex-row` with `lg:w-1/2`
+  on each column) anyway — flexbox's stretch-by-default cross-axis
+  behavior is more predictable for this exact "two full-height columns"
+  layout than relying on an implicit grid row's auto-sizing, even though
+  the original grid version turned out not to be broken. Re-verified
+  visually after the change (identical rendering, as expected) and
+  confirmed zero console errors on page load.
+- Checked console messages on /register: no errors, only the standard
+  React DevTools dev-mode notice.
+- Removed frontend/tsconfig.json's explicit `baseUrl: "."` after the dev
+  server flagged it as deprecated (TypeScript 7.0 will stop honoring it);
+  `paths` alone still resolves relative to the tsconfig's own location in
+  current TypeScript, confirmed by re-running `npm run typecheck` clean
+  afterward.

@@ -12,8 +12,8 @@ export function AuthLayout({
   footer: React.ReactNode;
 }) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-ink px-12 py-12 text-paper lg:flex">
+    <div className="flex min-h-screen flex-col lg:flex-row">
+      <div className="hidden flex-col justify-between bg-ink px-12 py-12 text-paper lg:flex lg:w-1/2">
         <span className="font-display text-xl italic">Maintain</span>
         <div>
           <p className="font-display text-display-md text-paper">
@@ -30,7 +30,7 @@ export function AuthLayout({
         <p className="text-xs text-paper/40">Phase 0 · Multi-society MVP</p>
       </div>
 
-      <div className="flex items-center justify-center px-6 py-16">
+      <div className="flex flex-1 items-center justify-center px-6 py-16 lg:w-1/2">
         <div className="w-full max-w-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-clay">{eyebrow}</p>
           <h1 className="mt-2 font-display text-display-sm text-ink">{title}</h1>
