@@ -1,0 +1,6 @@
+COMMANDS LOG — one line per command, short brief
+=================================================
+
+--- STEP 0 ---
+node -v && npm -v && which pnpm && git --version   # checked available tooling in this environment
+git init -b main                                    # created local git repo, branch "main", no remote

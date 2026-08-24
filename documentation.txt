@@ -1,0 +1,45 @@
+SOCIETY MAINTENANCE TRACKER — BUILD LOG
+=========================================
+This file is a running, step-by-step account of what was built and why.
+Each entry corresponds to one step of the Build Order in the spec
+(Society_Maintenance_Tracker_Final_Build_Prompt (1).md). Decisions and
+assumptions that weren't fully spelled out in the spec are recorded here
+as they're made.
+
+-----------------------------------------------------------------------
+STEP 0 — Project setup
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- Initialized a local git repository (branch: main). No remote configured;
+  nothing will be pushed anywhere unless explicitly asked.
+- Created this file (documentation.txt) and commands.txt to track the
+  build as it happens.
+
+Decisions:
+- Package manager: npm. It's the only one available in this environment
+  (no pnpm/yarn installed) and the spec doesn't mandate a specific one.
+- Repo layout: two independent apps, /backend and /frontend, each with
+  its own package.json — matches the spec's deliverable list exactly
+  ("Full source code: /frontend (Next.js) and /backend (Fastify)").
+  No npm workspaces needed since the two apps deploy to different
+  platforms (Vercel / Render) and don't share code at build time.
+- Design direction locked in before writing any UI code, so every screen
+  stays consistent instead of drifting:
+    - Type: serif display face "Fraunces" for headings/large numbers,
+      paired with "Inter" for body/UI text. Deliberately not a
+      sans-everywhere SaaS look.
+    - Color: warm off-white background (#F7F4EF), near-black ink
+      (#1B1815), one confident accent — deep clay/rust (#B5502C) — plus
+      a muted forest green for resolved/positive states. No blue/purple
+      gradients, no glassmorphism.
+    - Surfaces: flat panels with 1px hairline borders instead of heavy
+      drop shadows; shadows reserved for real overlays (modals/menus).
+    - Admin lists are real tables with tabular numerals, not card grids.
+    - Icons: lucide-react, monochrome, used sparingly. No emoji as UI
+      icons.
+- Will commit to git once per Build Order step so progress is
+  checkpointed and reviewable.
+
+Nothing runs end-to-end yet — this step is just repo + tracking setup.
