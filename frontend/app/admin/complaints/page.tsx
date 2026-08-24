@@ -6,7 +6,7 @@ import { useCurrentUser } from "@/lib/useCurrentUser";
 import { AppShell } from "@/components/AppShell";
 import { usePaginatedList } from "@/lib/usePaginatedList";
 import { Badge, statusTone, priorityTone } from "@/components/ui/Badge";
-import { Select } from "@/components/ui/Field";
+import { Select, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/Panel";
 import { formatAge } from "@/lib/format";
@@ -17,11 +17,16 @@ interface Filters {
   category: string;
   status: string;
   priority: string;
+  from: string; // yyyy-mm-dd, from a native date input
+  to: string; // yyyy-mm-dd, from a native date input
 }
+
+const EMPTY_FILTERS: Filters = { category: "", status: "", priority: "", from: "", to: "" };
 
 export default function AdminComplaintsPage() {
   const { user } = useCurrentUser(["society_admin", "super_admin"]);
-  const [filters, setFilters] = useState<Filters>({ category: "", status: "", priority: "" });
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const hasActiveFilters = Object.values(filters).some(Boolean);
 
   const { items, loading, loadingMore, nextCursor, loadMore } = usePaginatedList<Complaint>(
     (cursor) => {
@@ -30,9 +35,14 @@ export default function AdminComplaintsPage() {
       if (filters.category) params.set("category", filters.category);
       if (filters.status) params.set("status", filters.status);
       if (filters.priority) params.set("priority", filters.priority);
+      // Dates come from <input type="date"> as yyyy-mm-dd; the backend
+      // wants full date-time strings, so pin "from" to the start of that
+      // day and "to" to the end of it (inclusive range).
+      if (filters.from) params.set("from", new Date(`${filters.from}T00:00:00`).toISOString());
+      if (filters.to) params.set("to", new Date(`${filters.to}T23:59:59`).toISOString());
       return `/complaints?${params.toString()}`;
     },
-    [user?.id, filters.category, filters.status, filters.priority],
+    [user?.id, filters.category, filters.status, filters.priority, filters.from, filters.to],
   );
 
   if (!user) return null;
@@ -77,6 +87,27 @@ export default function AdminComplaintsPage() {
           <option value="Medium">Medium</option>
           <option value="High">High</option>
         </Select>
+        <Input
+          type="date"
+          aria-label="From date"
+          value={filters.from}
+          max={filters.to || undefined}
+          onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))}
+          className="w-auto"
+        />
+        <Input
+          type="date"
+          aria-label="To date"
+          value={filters.to}
+          min={filters.from || undefined}
+          onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))}
+          className="w-auto"
+        />
+        {hasActiveFilters ? (
+          <Button variant="ghost" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>
+            Clear filters
+          </Button>
+        ) : null}
       </div>
 
       <div className="mt-5 panel overflow-hidden">

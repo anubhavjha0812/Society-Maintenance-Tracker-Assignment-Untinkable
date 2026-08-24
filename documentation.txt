@@ -458,3 +458,22 @@ What was done:
   `paths` alone still resolves relative to the tsconfig's own location in
   current TypeScript, confirmed by re-running `npm run typecheck` clean
   afterward.
+
+-----------------------------------------------------------------------
+STEP 11 — Admin complaint list: date-range filter was backend-only
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+While a code review ran in the background, re-read the spec against what
+was actually shipped and found a real gap: the backend's GET /complaints
+already accepted `from`/`to` (spec: "filter by category, status,
+priority, date range"), but frontend/app/admin/complaints/page.tsx only
+ever exposed category/status/priority selects — date range was silently
+unreachable from the UI. Added two native `<input type="date">` filters
+plus a "Clear filters" button (only shown once a filter is active). Dates
+from the input are `yyyy-mm-dd`; converted to `from` = start-of-day and
+`to` = end-of-day ISO strings before hitting the API, so the range is
+inclusive of both selected days. Also added `max`/`min` cross-constraints
+between the two date inputs so a user can't pick an inverted range.
+Verified with `npm run typecheck` and a full `next build` (both clean,
+same 12/12 routes).

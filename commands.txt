@@ -49,3 +49,7 @@ curl http://localhost:3000/login                                # confirmed 200 
 [Chrome] read_console_messages on /register                      # confirmed no errors
 npm run typecheck                                                # re-confirmed clean after removing deprecated tsconfig baseUrl
 lsof -ti:3000 | xargs kill -9                                     # stopped the dev server
+
+--- STEP 11 (admin date-range filter fix) ---
+npm run typecheck                                                 # clean after adding from/to date inputs
+npm run build                                                     # clean production build, 12/12 routes
