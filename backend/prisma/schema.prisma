@@ -63,26 +63,90 @@ model Society {
   @@map("societies")
 }
 
+// Credentials live on Account (below), not here — see documentation.txt
+// for why: Better-Auth's own sign-up/sign-in flow always writes/reads the
+// password hash via a separate Account row (providerId: "credential"),
+// never a column on User directly, regardless of what this app's schema
+// declares. emailVerified/updatedAt are likewise columns Better-Auth's
+// internal adapter unconditionally includes on every user write.
 model User {
-  id           String   @id @default(cuid())
-  societyId    String   @map("society_id")
-  name         String
-  email        String
-  phone        String?
-  passwordHash String   @map("password_hash")
-  role         Role     @default(resident)
-  flatNumber   String?  @map("flat_number")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            String   @id @default(cuid())
+  societyId     String   @map("society_id")
+  name          String
+  email         String
+  emailVerified Boolean  @default(false) @map("email_verified")
+  image         String?
+  phone         String?
+  role          Role     @default(resident)
+  flatNumber    String?  @map("flat_number")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   society           Society                   @relation(fields: [societyId], references: [id], onDelete: Cascade)
   complaints        Complaint[]
   statusEventsActed ComplaintStatusHistory[]
   notices           Notice[]
   notifications     NotificationLog[]
+  sessions          Session[]
+  accounts          Account[]
 
   @@unique([societyId, email])
   @@index([societyId])
   @@map("users")
+}
+
+// Better-Auth core tables (session/credential storage) — not tenant data,
+// so no society_id: they're infrastructure for the User row they point
+// at, and every access is already scoped through that User's own
+// society_id.
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String    @map("user_id")
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  issuer                String?
+  password              String?
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime  @map("expires_at")
+  createdAt  DateTime? @default(now()) @map("created_at")
+  updatedAt  DateTime? @updatedAt @map("updated_at")
+
+  @@index([identifier])
+  @@map("verifications")
 }
 
 model Complaint {

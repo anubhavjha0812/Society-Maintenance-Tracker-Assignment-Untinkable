@@ -110,13 +110,30 @@ of re-running the request.
 | `POST /notices`, `GET /notices` | admin create, cursor-paginated list, important-pinned-first |
 | `GET /dashboard/summary` | admin; 60s Redis-cached counts |
 
-## Assumptions made (no live testing performed)
+## Verification status
 
-This was built without provisioning real Neon/Upstash/R2/Resend accounts,
-so nothing here has been smoke-tested end-to-end against live services —
-verification so far is `prisma validate`, `npm run typecheck`, and a
-production `next build`, all passing on both apps. Notable assumptions,
-also recorded inline in `documentation.txt`:
+Postgres/Prisma/Better-Auth/Fastify/RBAC were live-tested against a real
+Neon database during development — not just compiled. That round of
+testing found and fixed a chain of real bugs (a boot-order deadlock under
+a Redis outage, a 404'ing auth mount, a privilege-escalation hole, and a
+fundamental mismatch between the spec's literal `User.password_hash`
+field and how Better-Auth actually stores credentials — see
+`documentation.txt` Step 13 for the full account). Confirmed working via
+curl against live infrastructure: sign-up with an invite code, sign-in,
+RBAC 403s, the privilege-escalation guard, complaint creation (including
+graceful degradation when Redis is unreachable), and notices/complaints
+listing.
+
+**Still not live-tested**: Upstash Redis, Cloudflare R2, and Resend all
+still need real accounts provisioned (see Setup above) — BullMQ job
+processing, R2 uploads, and actual email sends are code-reviewed and
+typechecked but not yet run against real infrastructure. The frontend UI
+has been visually checked in a browser but not exercised through a full
+signup→complaint→resolution flow with real R2/Resend behind it.
+
+## Assumptions made
+
+Recorded inline in `documentation.txt` as they were made; the notable ones:
 
 - Registration uses a per-society invite code (Society.invite_code) —
   the spec allowed either an invite-code or society-selection flow.
@@ -129,6 +146,24 @@ also recorded inline in `documentation.txt`:
   to the Prisma schema beyond the spec's literal field list, both
   required by the spec's own functional requirements (invite-code
   registration; idempotent notification sends).
+- **`User.password_hash` does not exist** (the one real deviation from
+  the spec's literal data model, and not optional — see below).
+
+## Better-Auth's data model vs. the spec's literal one
+
+The spec's `User` field list includes `password_hash` directly on the
+table. That cannot work with Better-Auth as actually implemented: its
+sign-up/sign-in code always reads and writes the credential via a
+separate `Account` row (`providerId: "credential"`), never a column on
+`User`, regardless of what the Prisma schema declares — confirmed by
+hitting this exact wall live (see `documentation.txt` Step 13) and by
+generating a reference schema with `npx @better-auth/cli generate`
+pointed at this app's real `auth.ts`. The schema therefore has no
+`User.password_hash`; instead it adds three Better-Auth-owned tables
+(`Session`, `Account`, `Verification`) plus `User.emailVerified` and
+`User.updatedAt`, which Better-Auth's internal adapter unconditionally
+includes on every user write. Every other field on `User` matches the
+spec exactly.
 
 ## Dependency notes
 

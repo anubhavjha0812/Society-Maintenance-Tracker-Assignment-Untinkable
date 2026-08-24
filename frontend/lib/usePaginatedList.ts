@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Page } from "./api-client";
 
 /**
@@ -16,8 +16,16 @@ export function usePaginatedList<T>(buildPath: (cursor: string | null) => string
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Bumped every time the deps change and the first page reloads.
+  // loadMore() captures the generation it was called under and discards
+  // its result if a newer generation has since started — otherwise a
+  // slow "load more" that's still in flight when the filters change
+  // would land after the reset and append stale rows onto the new list.
+  const generationRef = useRef(0);
+
   useEffect(() => {
     let cancelled = false;
+    generationRef.current += 1;
     setLoading(true);
     setError(null);
     api
@@ -37,13 +45,15 @@ export function usePaginatedList<T>(buildPath: (cursor: string | null) => string
 
   const loadMore = useCallback(async () => {
     if (!nextCursor) return;
+    const generation = generationRef.current;
     setLoadingMore(true);
     try {
       const page = await api.get<Page<T>>(buildPath(nextCursor));
+      if (generation !== generationRef.current) return;
       setItems((prev) => [...prev, ...page.items]);
       setNextCursor(page.nextCursor);
     } finally {
-      setLoadingMore(false);
+      if (generation === generationRef.current) setLoadingMore(false);
     }
   }, [nextCursor, buildPath]);
 

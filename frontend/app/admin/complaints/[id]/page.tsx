@@ -9,7 +9,7 @@ import { Badge, statusTone, priorityTone } from "@/components/ui/Badge";
 import { Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { HistoryTimeline } from "@/components/HistoryTimeline";
-import { api, newIdempotencyKey, type Complaint, type ComplaintHistoryEntry, type Priority } from "@/lib/api-client";
+import { api, newIdempotencyKey, ApiError, type Complaint, type ComplaintHistoryEntry, type Priority } from "@/lib/api-client";
 import { formatDate } from "@/lib/format";
 
 const NEXT_STATUS: Record<string, "InProgress" | "Resolved" | null> = {
@@ -25,6 +25,7 @@ export default function AdminComplaintDetailPage() {
   const [history, setHistory] = useState<ComplaintHistoryEntry[]>([]);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function refresh() {
     const [c, h] = await Promise.all([
@@ -44,9 +45,12 @@ export default function AdminComplaintDetailPage() {
   async function handlePriorityChange(priority: Priority) {
     if (!complaint) return;
     setBusy(true);
+    setActionError(null);
     try {
       const updated = await api.patch<Complaint>(`/complaints/${complaint.id}/priority`, { priority });
       setComplaint(updated);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not update priority");
     } finally {
       setBusy(false);
     }
@@ -55,6 +59,7 @@ export default function AdminComplaintDetailPage() {
   async function handleStatusAction(status: "InProgress" | "Resolved" | "Reopened") {
     if (!complaint) return;
     setBusy(true);
+    setActionError(null);
     try {
       await api.patch(
         `/complaints/${complaint.id}/status`,
@@ -63,6 +68,12 @@ export default function AdminComplaintDetailPage() {
       );
       setNote("");
       await refresh();
+    } catch (err) {
+      // A 409 here means someone else already moved this complaint's
+      // status (e.g. two admins acting on the same complaint at once) —
+      // surface it instead of failing silently, per the actual state now
+      // shown in the Status panel above.
+      setActionError(err instanceof ApiError ? err.message : "Could not update status");
     } finally {
       setBusy(false);
     }
@@ -128,6 +139,12 @@ export default function AdminComplaintDetailPage() {
                 <option value="High">High</option>
               </Select>
             </Panel>
+
+            {actionError ? (
+              <Panel className="border-rose">
+                <p className="text-sm text-rose">{actionError}</p>
+              </Panel>
+            ) : null}
 
             <Panel>
               <p className="field-label">Note (optional)</p>

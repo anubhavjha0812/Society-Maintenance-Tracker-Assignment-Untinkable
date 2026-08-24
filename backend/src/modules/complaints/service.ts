@@ -16,15 +16,37 @@ interface CreateComplaintInput {
   priority?: Priority;
 }
 
+/**
+ * Writes the complaint plus its first ComplaintStatusHistory row (status
+ * Open, actor = the resident who filed it) in one transaction — every
+ * complaint's history should start the moment it exists, both so
+ * GET /complaints/:id/history is never empty for a brand-new complaint
+ * and so the overdue-sweep worker (which measures age from the latest
+ * "entered Open" history row, not created_at) has something to measure
+ * against from the start.
+ */
 export async function createComplaint(prisma: PrismaClient, input: CreateComplaintInput) {
-  return prisma.complaint.create({
-    data: {
-      societyId: input.societyId,
-      residentId: input.residentId,
-      category: input.category,
-      description: input.description,
-      priority: input.priority ?? "Medium",
-    },
+  return prisma.$transaction(async (tx) => {
+    const complaint = await tx.complaint.create({
+      data: {
+        societyId: input.societyId,
+        residentId: input.residentId,
+        category: input.category,
+        description: input.description,
+        priority: input.priority ?? "Medium",
+      },
+    });
+
+    await tx.complaintStatusHistory.create({
+      data: {
+        complaintId: complaint.id,
+        societyId: input.societyId,
+        status: "Open",
+        actorId: input.residentId,
+      },
+    });
+
+    return complaint;
   });
 }
 
@@ -122,9 +144,14 @@ export async function updatePriority(
   args: { id: string; societyId: string; priority: Priority },
 ) {
   await getComplaintScoped(prisma, args.id, args.societyId);
+  // include: photos matches getComplaintById's shape — the admin detail
+  // page replaces its whole complaint state with this response, so
+  // omitting photos here would make them disappear from the UI after a
+  // priority change until the next full reload.
   return prisma.complaint.update({
     where: { id: args.id },
     data: { priority: args.priority },
+    include: { photos: true },
   });
 }
 

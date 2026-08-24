@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import type { Redis } from "ioredis";
+import { withRedisTimeout } from "../../lib/redisTimeout.js";
 
 const CACHE_TTL_SECONDS = 60;
 
@@ -26,9 +27,14 @@ export async function getDashboardSummary(
   redis: Redis,
   societyId: string,
 ): Promise<DashboardSummary> {
-  const cached = await redis.get(cacheKey(societyId));
-  if (cached) {
-    return JSON.parse(cached) as DashboardSummary;
+  try {
+    const cached = await withRedisTimeout(redis.get(cacheKey(societyId)));
+    if (cached) {
+      return JSON.parse(cached) as DashboardSummary;
+    }
+  } catch {
+    // Redis unavailable/slow — fall through and compute fresh rather
+    // than hang the request (see lib/redisTimeout.ts).
   }
 
   const [statusCounts, overdueCount, categoryCounts] = await Promise.all([
@@ -57,6 +63,11 @@ export async function getDashboardSummary(
     byCategory: categoryCounts.map((row) => ({ category: row.category, count: row._count._all })),
   };
 
-  await redis.set(cacheKey(societyId), JSON.stringify(summary), "EX", CACHE_TTL_SECONDS);
+  try {
+    await withRedisTimeout(redis.set(cacheKey(societyId), JSON.stringify(summary), "EX", CACHE_TTL_SECONDS));
+  } catch {
+    // Not fatal — the summary was already computed; it just won't be
+    // cached for the next request until Redis is reachable again.
+  }
   return summary;
 }

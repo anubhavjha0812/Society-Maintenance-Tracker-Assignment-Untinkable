@@ -11,8 +11,10 @@ import { Errors } from "../../lib/errors.js";
  * Two-step flow per spec: POST /media/presign returns a pre-signed R2 URL;
  * the client PUTs the file bytes straight to R2, then calls the confirm
  * endpoint so we record the ComplaintPhoto row only once the upload is
- * known to have happened (we never trust the client's word alone on size/
- * type — those were already fixed by the presigned URL's signed headers).
+ * known to have happened. The presigned PUT URL only binds Content-Type
+ * (R2/S3 checks that against the signature), not the byte size — so
+ * confirm re-validates both content-type and size itself rather than
+ * trusting a client that skips presign and calls confirm directly.
  */
 export default async function mediaRoutes(app: FastifyInstance) {
   app.post(

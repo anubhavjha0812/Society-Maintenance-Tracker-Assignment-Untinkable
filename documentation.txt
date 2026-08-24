@@ -487,3 +487,219 @@ to a pre-1.7 major that this codebase's imports (e.g. better-auth/api's
 createAuthMiddleware, @better-auth/prisma-adapter) weren't written
 against. Re-ran `npm install` + `npm run typecheck`: clean, 0
 vulnerabilities.
+
+-----------------------------------------------------------------------
+STEP 12 — Automated code review (high effort, full diff) + fixes
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+Ran an automated code review against the entire build (git diff from the
+init commit to HEAD). It came back with 10 confirmed findings. All 10
+were real, not false positives, and all 10 were fixed:
+
+1. Idempotency check-and-set race (backend/src/plugins/idempotency.ts):
+   the original implementation was GET-then-later-SET, so two concurrent
+   requests with the same Idempotency-Key could both miss the cache and
+   both run the handler — exactly the double-submit case idempotency is
+   supposed to prevent. Rewrote using an atomic Redis SET...NX to claim
+   the key; a second concurrent request either replays the first's
+   now-ready cached response or gets a 409 asking it to retry shortly if
+   the first is still mid-flight.
+2. Idempotency key collision across users/resources: the key was scoped
+   by societyId + route *pattern* (request.routeOptions.url, e.g.
+   "/complaints/:id/status" — the same literal string for every
+   complaint id), not by actor or the resolved URL. Rescoped to actor id
+   + the real request.url, so different users or different resources on
+   the same route can never collide.
+3. AppError thrown inside the Better-Auth sign-up hook became an opaque
+   500 with no body: better-call's router only special-cases its own
+   APIError when turning a hook's thrown error into a response. Switched
+   to throwing better-auth's own APIError (from better-auth/api) so
+   "Invalid invite code" etc. actually reaches the client.
+4. Overdue sweep compared against complaints.created_at, so a reopened
+   complaint (which can be arbitrarily old) was immediately re-flagged
+   overdue on the very next sweep tick, contradicting the sweep's own
+   intent of measuring time-since-last-opened. Rewrote the comparison to
+   use the timestamp of the most recent ComplaintStatusHistory row with
+   status='Open' for that complaint (a correlated subquery) instead —
+   correct for both a fresh complaint and a reopened one.
+5. Fixing #4 surfaced a deeper bug it depended on: createComplaint never
+   wrote an initial ComplaintStatusHistory row at all, so a brand-new
+   complaint had no "Open" history entry (history stayed empty until the
+   first status change) and would have been invisible to the sweep's new
+   subquery. Fixed createComplaint to write the complaint + its first
+   history row (status Open, actor = the filing resident) in one
+   transaction.
+6. POST /media/confirm accepted any content-type/size — those checks
+   only existed in /media/presign, so a resident could skip presign
+   entirely and call confirm directly with an oversized file or a
+   disallowed content-type. Added the same isAllowedContentType/
+   MAX_UPLOAD_BYTES checks to confirm.
+7. updatePriority's response omitted `include: { photos: true }` (unlike
+   getComplaintById), so the admin detail page's photo links silently
+   disappeared after any priority change, since that page replaces its
+   whole complaint state with the PATCH response. Added the same include.
+8. Admin complaint detail page (frontend): handlePriorityChange and
+   handleStatusAction used try/finally with no catch, so a failed PATCH
+   (e.g. 409 from two admins racing to change the same complaint) failed
+   completely silently. Added an error state, a catch block on both
+   handlers, and a visible error panel.
+9. usePaginatedList's loadMore() had no cancellation guard, unlike the
+   initial-load effect — a slow in-flight "load more" could resolve
+   after the filters changed and append stale rows onto the new,
+   already-reset list. Added a generation counter (bumped whenever the
+   deps change) that loadMore checks before applying its result.
+10. useCurrentUser's role-mismatch redirect only fired inside a
+    useEffect, so a resident navigating straight to an admin URL would
+    see the admin page's chrome and data-fetch attempt fire for one
+    render before the redirect landed (real data was still blocked by
+    backend RBAC — this was a UI-surface leak, not a data leak). Changed
+    the hook to return `user: undefined` for a role mismatch too, not
+    just for "no session" — every page's existing `if (!user) return
+    null` guard now covers both cases with no per-page changes needed.
+
+-----------------------------------------------------------------------
+STEP 13 — Real Neon database connected; extensive live-flow testing
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+The user provided a real Neon Postgres connection string mid-session.
+Wrote it to backend/.env (gitignored, never committed) alongside
+generated/placeholder values for the other required env vars (a real
+random BETTER_AUTH_SECRET; syntactically-valid-but-fake Upstash/R2/
+Resend values, since no accounts exist yet for those). This unlocked
+testing that was previously impossible in this environment — and it
+surfaced a chain of real, would-have-shipped bugs that neither
+`prisma validate` nor `tsc --noEmit` nor `next build` could ever have
+caught, because they only appear when the code actually talks to a real
+database and a real auth flow runs start to finish.
+
+What was found and fixed, roughly in the order they were hit running
+`prisma migrate dev`, `npm run seed`, and then live curl requests against
+`npm run dev`:
+
+- ioredis crashes the whole Node process on an unhandled 'error' event
+  by EventEmitter default. Neither plugins/redis.ts nor
+  queue/connection.ts had an `.on('error', ...)` listener, so a
+  Redis connection problem (expected right now, since only placeholder
+  Upstash credentials exist) took down the entire API, not just the
+  Redis-dependent parts of it. Fixed both to log and let ioredis's own
+  reconnect logic keep trying instead of crashing.
+- server.ts awaited scheduleOverdueSweep() (which calls BullMQ's
+  queue.add(), talking to Redis) *before* app.listen(). Combined with
+  ioredis's maxRetriesPerRequest: null (required for BullMQ), a call
+  against unreachable Redis hangs forever instead of failing — so a
+  Redis outage silently prevented the entire HTTP API from ever starting,
+  including routes that never touch Redis at all (auth, most reads).
+  Reordered so app.listen() only needs Fastify hooks to be registered
+  first (which don't touch Redis) — the actual Redis-touching call is
+  fire-and-forgotten with a .catch(), never blocking startup.
+- Every /api/v1/auth/* request 404'd. Better-Auth defaults to expecting
+  itself to be served from /api/auth (its `basePath` option); this app
+  mounts it at /api/v1/auth (see modules/auth/routes.ts's request-bridge)
+  but never told Better-Auth that, so its own internal router 404'd on
+  every request before ever reaching an endpoint. Fixed by setting
+  `basePath: "/api/v1/auth"` in the betterAuth() config.
+- Sign-up failed with "societyId is not allowed to be set": the
+  `role`/`societyId` additionalFields were declared `input: false`
+  (intended to mean "the client can't set this"), but that setting makes
+  Better-Auth's own endpoint schema reject the field outright — even
+  when this app's own `before` hook is the one injecting it, not the
+  client. Changed both to `input: true, required: false`; the actual
+  security guarantee (client can never set these) comes from the hook
+  unconditionally overwriting them on every /sign-up/email call, not
+  from the schema.
+- That fix opened a real privilege-escalation hole: with `role`/
+  `societyId` now `input: true`, Better-Auth's built-in POST
+  /update-user endpoint would have accepted them straight from any
+  authenticated caller's request body — letting a signed-in resident set
+  their own role to society_admin or hop to a different society_id
+  entirely. Found by reasoning through what `input: true` actually
+  exposes, then confirmed live: curled /update-user with
+  {"role":"society_admin"} using a resident's session cookie and got
+  "societyId is not allowed to be set" turn into a clean 403 "role and
+  societyId cannot be set through this endpoint" only after adding a
+  guard to the same `before` hook rejecting those two keys on every path
+  except the one sign-up flow that's allowed to set them. Verified the
+  guard doesn't break legitimate profile updates (flatNumber) with a
+  second curl.
+- Sign-up then failed with "Failed to create user" / "Argument
+  passwordHash is missing": this was the deepest issue. Better-Auth does
+  not store the password hash on the User row at all — it always writes
+  it to a separate Account row (providerId: "credential"), supporting
+  multiple linked accounts/providers per user. This app's Prisma schema,
+  following the spec's literal User field list, put password_hash
+  directly on User — a design that can never work with how Better-Auth
+  actually persists credentials, regardless of Prisma adapter
+  configuration. Used `npx @better-auth/cli generate` pointed at this
+  app's real auth.ts (not guessed field names) to get an accurate
+  reference schema, then hand-merged the necessary changes into
+  schema.prisma: removed User.passwordHash, added User.emailVerified and
+  User.updatedAt (both fields Better-Auth's internal adapter
+  unconditionally includes on every user write), and added three new
+  models — Session, Account, Verification — mapped to snake_case tables
+  consistent with the rest of this schema. One field the CLI's reference
+  didn't have (the installed better-auth 1.7.1 is newer than the
+  deprecated @better-auth/cli's own internal assumptions): Account also
+  needed an `issuer` column, discovered from a second live error
+  ("Unknown argument `issuer`") and confirmed by reading
+  better-auth/dist/api/routes/sign-up.mjs directly. This is the one
+  genuine deviation from the spec's literal data model in this whole
+  build, and it's a hard technical necessity, not a preference — Better-
+  Auth's own sign-up/sign-in code paths reference Account.password,
+  never User.passwordHash, no matter what the Prisma schema declares.
+- Seed script also needed rewriting to match: it had been writing
+  passwordHash directly onto User, which (a) no longer compiles against
+  the new schema and (b) was never going to let seeded accounts log in
+  through the real auth flow even before that, since sign-in only ever
+  looks at Account. Rewrote createUser() to create the User row, then a
+  matching Account row (providerId: "credential", password: hash from
+  better-auth/crypto's hashPassword — the same function better-auth
+  itself uses). First attempt still failed sign-in with "Invalid email
+  or password" despite a verifiably-correct password hash (confirmed by
+  calling verifyPassword() directly against the stored hash outside the
+  HTTP flow — it returned true) — traced to sign-in.mjs filtering
+  candidate Account rows by `account.issuer === credentialIssuer` where
+  credentialIssuer = createLocalAccountIssuer("credential"), a synthetic
+  value ("local:credential") the seed script wasn't setting. Fixed by
+  importing and calling that same function (from @better-auth/core/db,
+  added as an explicit dependency rather than relying on it being
+  hoisted transitively) instead of hardcoding the string.
+- Ran `prisma migrate reset --force` twice during this process (each
+  time only against the demo/seed data seeded earlier in this same
+  session, never against anything a real user would have created) to get
+  a clean slate after schema changes that would otherwise have hit
+  Prisma's "required column added to a table with existing rows" data-
+  loss guard.
+- The idempotency plugin and the dashboard summary cache both had the
+  same class of bug as the boot-order issue above, just at the request
+  level instead of startup: any Redis call with no timeout hangs forever
+  against unreachable Redis. Confirmed live — POST /complaints with an
+  Idempotency-Key header hung indefinitely until this was fixed. Added
+  backend/src/lib/redisTimeout.ts (a 1.5s Promise.race wrapper) and used
+  it everywhere idempotency.ts and dashboard/service.ts touch Redis; a
+  timeout now degrades to "proceed without idempotency protection" /
+  "compute the summary fresh without caching it" instead of hanging the
+  request. Availability was judged more important than the idempotency
+  guarantee during a Redis outage — a downed cache shouldn't be able to
+  take down complaint creation.
+
+After all of the above, verified live end-to-end against the real Neon
+database via curl: POST /sign-up/email (new resident, invite code
+resolved to the right society) — 200; POST /sign-in/email (seeded
+demo account) — 200; GET /complaints/mine — 200, correctly scoped;
+POST /complaints with an Idempotency-Key while Redis is unreachable —
+201, degrades instead of hanging; GET /dashboard/summary as a resident —
+403 (RBAC correctly blocks it); POST /update-user with
+{"role":"society_admin"} as a resident — 403 (privilege-escalation guard
+holds); POST /update-user with a legitimate field (flatNumber) — 200
+(guard doesn't over-block); GET /notices — 200, important-first
+ordering correct.
+
+What's still not live-tested: Upstash Redis, Cloudflare R2, and Resend
+all still only have placeholder credentials in this environment (no
+accounts exist for them here) — so BullMQ job processing, R2 uploads,
+and actual email sends remain unverified beyond code review + the
+Redis-unavailable-degrades-gracefully behavior confirmed above. Postgres/
+Prisma/Better-Auth/Fastify/RBAC/idempotency are now genuinely verified
+against live infrastructure, not just compiled.

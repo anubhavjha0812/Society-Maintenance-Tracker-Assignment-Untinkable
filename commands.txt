@@ -53,5 +53,30 @@ lsof -ti:3000 | xargs kill -9                                     # stopped the 
 --- STEP 11 (admin date-range filter fix) ---
 npm run typecheck                                                 # clean after adding from/to date inputs
 npm run build                                                     # clean production build, 12/12 routes
+
+--- STEP 12 (automated code review + fixes) ---
+[skill] code-review high 2218837..HEAD                            # full-diff review, 10 confirmed findings
+npm run typecheck (backend, repeated after each fix)               # clean after every fix in this batch
+npm run typecheck && npm run build (frontend, after frontend fixes) # clean
+
+--- STEP 13 (live Neon DB connected; extensive real-flow debugging) ---
+# .env written directly (gitignored, never committed) with the real DATABASE_URL
+npx prisma validate                                                # schema valid against real Neon connection string
+npx prisma migrate dev --name init                                 # first live migration, applied successfully
+npm run seed                                                       # seeded 3 societies/users/complaints/notices — but see below, had to redo
+node -e "...prisma.society.count()..."                             # one-off connectivity check after a transient dev-server crash
+npm run dev (background)                                            # booted backend against live DB; iterated through ~8 real bugs (see documentation.txt Step 13)
+curl POST /api/v1/auth/sign-up/email                                 # first 404 (wrong basePath), then FIELD_NOT_ALLOWED, then FAILED_TO_CREATE_USER, then 200
+npx @better-auth/cli generate --config src/modules/auth/auth.ts       # got an accurate reference schema instead of guessing field names
+npx prisma migrate dev --name add_better_auth_tables                  # added Session/Account/Verification + User.emailVerified/updatedAt
+npx prisma migrate reset --force (x2)                                  # clean slate after schema changes, only ever against seed/demo data
+npx prisma migrate dev --name add_account_issuer                       # added the one field the CLI reference was missing (newer better-auth version)
+node --import tsx -e "...verifyPassword({hash,password})..."           # confirmed a seeded password hash was valid before chasing the real bug (missing issuer)
+curl POST /api/v1/auth/sign-in/email                                    # 401 until issuer fix, then 200
+curl POST /api/v1/complaints -H "Idempotency-Key: ..."                   # hung indefinitely until Redis-timeout fix, then 201
+curl GET /api/v1/dashboard/summary (as resident)                         # 403, confirms RBAC
+curl POST /api/v1/auth/update-user -d '{"role":"society_admin"}'          # confirms privilege-escalation guard (403)
+curl POST /api/v1/auth/update-user -d '{"flatNumber":"A-102"}'             # confirms legit updates still work (200)
+curl GET /api/v1/notices, GET /api/v1/complaints/mine                       # 200, correctly scoped/ordered
 cd ../backend && npm install                                      # re-locked better-auth to ^1.7.1 (matches what was actually resolved)
 npm run typecheck                                                 # clean, 0 vulnerabilities

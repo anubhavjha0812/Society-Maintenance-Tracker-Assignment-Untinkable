@@ -1,9 +1,8 @@
 import { betterAuth } from "better-auth";
-import { createAuthMiddleware } from "better-auth/api";
+import { createAuthMiddleware, APIError } from "better-auth/api";
 import { prismaAdapter } from "@better-auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
 import { env } from "../../config/env.js";
-import { Errors } from "../../lib/errors.js";
 
 const prisma = new PrismaClient();
 
@@ -18,6 +17,12 @@ const prisma = new PrismaClient();
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
+  // Better-Auth defaults to serving itself at /api/auth; this app mounts
+  // it at /api/v1/auth (routes.ts's bridge forwards every request under
+  // that prefix into auth.handler()), so basePath has to match or every
+  // request 404s inside Better-Auth's own internal router before it ever
+  // reaches an endpoint.
+  basePath: "/api/v1/auth",
   trustedOrigins: [env.FRONTEND_URL],
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   emailAndPassword: {
@@ -26,27 +31,58 @@ export const auth = betterAuth({
   },
   user: {
     additionalFields: {
-      role: { type: "string", input: false, defaultValue: "resident" },
-      societyId: { type: "string", input: false },
+      // input:true here does NOT mean the client is trusted to set these
+      // — the before hook below unconditionally overwrites both on every
+      // /sign-up/email call, discarding whatever the client sent. That
+      // overwrite is what actually enforces "the client can never set
+      // society_id or role" (per the spec's multi-tenancy rule), not the
+      // schema. input:false looked like the more locked-down choice, but
+      // it makes Better-Auth's own endpoint schema reject the field
+      // outright — including when this app's own hook is the one setting
+      // it — so registration itself becomes unreachable. input:true is
+      // required for the hook's injected value to reach the DB write.
+      role: { type: "string", input: true, required: false, defaultValue: "resident" },
+      societyId: { type: "string", input: true, required: false },
       flatNumber: { type: "string", input: true, required: false },
       phone: { type: "string", input: true, required: false },
     },
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== "/sign-up/email") return;
+      // Making role/societyId input:true (see the comment above) so this
+      // hook can inject them on sign-up also means Better-Auth's own
+      // built-in /update-user endpoint would otherwise accept them
+      // straight from an authenticated caller's request body — letting
+      // any signed-in resident PATCH their own role to society_admin or
+      // hop to a different society_id entirely. Every path except the
+      // one sign-up flow this hook controls must reject those two keys
+      // outright.
+      if (ctx.path !== "/sign-up/email") {
+        const body = ctx.body as Record<string, unknown> | undefined;
+        if (body && ("role" in body || "societyId" in body)) {
+          throw new APIError("FORBIDDEN", {
+            message: "role and societyId cannot be set through this endpoint",
+          });
+        }
+        return;
+      }
 
+      // Thrown as better-call's own APIError, not this app's AppError —
+      // better-call's router only special-cases APIError instances when
+      // deciding how to turn a hook's thrown error into a response
+      // (anything else becomes an opaque 500 with no body), so an
+      // AppError here would silently swallow this message.
       const body = ctx.body as { inviteCode?: string } | undefined;
       const inviteCode = body?.inviteCode?.trim();
       if (!inviteCode) {
-        throw Errors.badRequest("inviteCode is required to register");
+        throw new APIError("BAD_REQUEST", { message: "inviteCode is required to register" });
       }
 
       const society = await prisma.society.findUnique({
         where: { inviteCode },
       });
       if (!society) {
-        throw Errors.badRequest("Invalid invite code");
+        throw new APIError("BAD_REQUEST", { message: "Invalid invite code" });
       }
 
       return {

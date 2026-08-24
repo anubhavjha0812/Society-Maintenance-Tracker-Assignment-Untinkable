@@ -12,6 +12,17 @@ const REPEAT_JOB_ID = "overdue-sweep-repeat";
  * each society's overdue_threshold_days" requirement from the spec,
  * without a per-complaint loop and without computing overdue status
  * inline on every read (the spec explicitly rules that out).
+ *
+ * The age used is "time since this complaint most recently *entered*
+ * Open" — the latest ComplaintStatusHistory row with status='Open' for
+ * that complaint (creation writes one, and so does every Reopen) — not
+ * complaints.created_at. Using created_at would immediately re-flag a
+ * just-reopened complaint as overdue based on its original creation date
+ * even though the reopen just reset it; using updated_at instead would
+ * have the opposite problem (an unrelated field edit like a priority
+ * change would reset the overdue clock). The status-history timestamp is
+ * the one signal that means exactly "how long has it been open, right
+ * now."
  */
 export function startOverdueSweepWorker(prisma: PrismaClient) {
   const worker = new Worker(
@@ -24,7 +35,13 @@ export function startOverdueSweepWorker(prisma: PrismaClient) {
         WHERE c.society_id = s.id
           AND c.current_status = 'Open'
           AND c.is_overdue = false
-          AND c.created_at <= now() - make_interval(days => s.overdue_threshold_days)
+          AND (
+            SELECT csh.timestamp
+            FROM complaint_status_history csh
+            WHERE csh.complaint_id = c.id AND csh.status = 'Open'
+            ORDER BY csh.timestamp DESC
+            LIMIT 1
+          ) <= now() - make_interval(days => s.overdue_threshold_days)
       `;
       if (affected > 0) {
         console.log(`[overdue-sweep] marked ${affected} complaint(s) overdue`);

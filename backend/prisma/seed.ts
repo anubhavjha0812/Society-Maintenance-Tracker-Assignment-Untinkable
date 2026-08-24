@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "better-auth/crypto";
+import { createLocalAccountIssuer } from "@better-auth/core/db";
 
 /**
  * Seeds 3 demo societies, one admin + a few residents per society, sample
@@ -51,6 +52,12 @@ const SOCIETIES = [
   },
 ];
 
+/**
+ * Better-Auth stores the password hash on a separate Account row
+ * (providerId: "credential"), never directly on User — its own sign-in
+ * flow only ever looks there, so a seeded user needs both rows to
+ * actually be able to log in through the real auth flow afterwards.
+ */
 async function createUser(args: {
   societyId: string;
   name: string;
@@ -58,17 +65,35 @@ async function createUser(args: {
   role: "resident" | "society_admin";
   flatNumber?: string;
 }) {
-  const passwordHash = await hashPassword(DEMO_PASSWORD);
-  return prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       societyId: args.societyId,
       name: args.name,
       email: args.email,
-      passwordHash,
       role: args.role,
       flatNumber: args.flatNumber,
     },
   });
+
+  const passwordHash = await hashPassword(DEMO_PASSWORD);
+  await prisma.account.create({
+    data: {
+      userId: user.id,
+      accountId: user.id,
+      providerId: "credential",
+      // Sign-in only matches an Account row whose issuer equals this
+      // exact synthetic value (see better-auth's sign-in.mjs) — a
+      // credential row without it is invisible to sign-in even though
+      // the password hash is correct, which is exactly the bug this line
+      // fixes (confirmed by testing sign-in against a live seeded
+      // account and getting a generic "Invalid email or password" until
+      // this was added).
+      issuer: createLocalAccountIssuer("credential"),
+      password: passwordHash,
+    },
+  });
+
+  return user;
 }
 
 function daysAgo(days: number): Date {
