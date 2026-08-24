@@ -145,7 +145,7 @@ of re-running the request.
 
 | Endpoint | Notes |
 |---|---|
-| `POST/GET /auth/*` | Better-Auth (sign-up, sign-in, session, sign-out) |
+| `POST/GET /auth/*` | Better-Auth (sign-up, sign-in, session, sign-out, update-user) |
 | `POST /complaints` | resident creates |
 | `GET /complaints/mine` | resident's own, cursor-paginated |
 | `GET /complaints` | admin, filter by category/status/priority/date range, sorted overdue → priority → age |
@@ -156,6 +156,9 @@ of re-running the request.
 | `POST /media/presign` / `POST /media/confirm` | R2 direct-upload flow |
 | `POST /notices`, `GET /notices` | admin create, cursor-paginated list, important-pinned-first |
 | `GET /dashboard/summary` | admin; 60s Redis-cached counts |
+
+Full request/response payloads, status codes, and error shapes for every
+endpoint above: **[API.md](./API.md)**.
 
 ## Verification status
 

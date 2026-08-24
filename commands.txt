@@ -84,5 +84,8 @@ git ls-remote https://github.com/anubhavjha0812/Society-Maintenance-Tracker-Assi
 git remote add origin https://github.com/anubhavjha0812/Society-Maintenance-Tracker-Assignment-Untinkable.git
 git push -u origin main                                                       # pushed all local commits
 git mv backend/render.yaml render.yaml                                        # moved to repo root for Render Blueprint auto-detection
+
+--- STEP 15 (API.md) ---
+(no shell commands — read schema.ts/routes.ts files directly to write accurate docs)
 cd ../backend && npm install                                      # re-locked better-auth to ^1.7.1 (matches what was actually resolved)
 npm run typecheck                                                 # clean, 0 vulnerabilities

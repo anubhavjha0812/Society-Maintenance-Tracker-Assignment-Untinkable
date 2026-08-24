@@ -739,3 +739,26 @@ Decisions:
   automate the deploy — none were present in this environment, and
   setting up fresh CLI auth would itself require the account-creation
   step above.
+
+-----------------------------------------------------------------------
+STEP 15 — Dedicated API.md
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+What was done:
+- Added API.md at the repo root: full request/response JSON shapes,
+  status codes, and error format for every endpoint, pulled directly
+  from the actual Fastify JSON schemas (backend/src/modules/*/schema.ts)
+  and route handlers rather than re-describing them from memory — so the
+  documented shapes are guaranteed to match what the code actually
+  accepts/returns (field names, min/max lengths, enum values, optional
+  vs required).
+- Documented the Better-Auth-bridged endpoints actually in use
+  (sign-up/email, sign-in/email, get-session, sign-out, update-user)
+  including the update-user privilege-escalation guard from Step 13,
+  since that's exactly the kind of non-obvious behavior an API
+  consumer needs to know about.
+- Trimmed README.md's inline API table down to the short summary it
+  already was, with a link to API.md for full payloads — avoids
+  maintaining the same information in two places at different levels of
+  detail.
