@@ -36,9 +36,14 @@ commands.txt        every command run during the build, one line each
 
 - **Neon** (neon.tech) — create a project, copy the pooled connection
   string.
-- **Upstash** (upstash.com) — create a Redis database, copy the **TCP**
-  connection string (`rediss://...`), not the REST URL — BullMQ needs a
-  real Redis protocol connection.
+- **Upstash** (upstash.com) — create a **Redis** database (not QStash —
+  a different product, HTTP-based, not Redis-protocol-compatible with
+  BullMQ). Pick a region close to your Neon database and Render backend
+  (this repo's Neon is `us-east-2`/Ohio and `render.yaml`'s region is
+  `ohio` — match Upstash's region to that, since every Redis call
+  happens inside a request that's also already talking to Postgres).
+  Copy the **TCP** connection string (`rediss://...`), not the REST
+  URL — BullMQ needs a real Redis protocol connection.
 - **Cloudflare R2** (dash.cloudflare.com → R2) — create a bucket, an API
   token (Account ID + Access Key ID + Secret Access Key), and enable
   public access (or a custom domain) for the bucket to get a public base

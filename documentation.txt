@@ -762,3 +762,18 @@ What was done:
   already was, with a link to API.md for full payloads — avoids
   maintaining the same information in two places at different levels of
   detail.
+
+-----------------------------------------------------------------------
+STEP 16 — Render region mismatch with Neon
+-----------------------------------------------------------------------
+Date: 2026-08-24
+
+While answering the user's question about which Upstash region to pick,
+noticed render.yaml's region was still its original default (`oregon`,
+US West) while the user's actual Neon database connection string is
+`us-east-2` (Ohio) — every single Postgres query in production would
+have paid a needless cross-country round trip. Changed render.yaml's
+region to `ohio` (Render's matching US-East region) and added a note in
+README's Setup section to also pick the matching Upstash region, since
+Redis calls happen inside the same request as Postgres calls and
+mismatched regions compound.
