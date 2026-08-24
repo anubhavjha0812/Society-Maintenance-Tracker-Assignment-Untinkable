@@ -53,3 +53,5 @@ lsof -ti:3000 | xargs kill -9                                     # stopped the 
 --- STEP 11 (admin date-range filter fix) ---
 npm run typecheck                                                 # clean after adding from/to date inputs
 npm run build                                                     # clean production build, 12/12 routes
+cd ../backend && npm install                                      # re-locked better-auth to ^1.7.1 (matches what was actually resolved)
+npm run typecheck                                                 # clean, 0 vulnerabilities

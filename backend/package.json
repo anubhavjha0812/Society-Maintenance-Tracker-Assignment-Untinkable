@@ -24,7 +24,7 @@
     "@fastify/rate-limit": "^10.1.1",
     "@prisma/client": "^5.19.1",
     "bullmq": "^5.12.12",
-    "better-auth": "^1.0.0",
+    "better-auth": "^1.7.1",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
     "fastify-plugin": "^5.0.1",

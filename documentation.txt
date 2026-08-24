@@ -477,3 +477,13 @@ inclusive of both selected days. Also added `max`/`min` cross-constraints
 between the two date inputs so a user can't pick an inverted range.
 Verified with `npm run typecheck` and a full `next build` (both clean,
 same 12/12 routes).
+
+Also noticed backend/package.json still pinned `better-auth": "^1.0.0"`
+even though the actually-resolved/installed version (confirmed via
+node_modules) is 1.7.1 — the same version already used explicitly on the
+frontend. Corrected the backend's declared range to `^1.7.1` to match
+what's actually locked, so a future clean install can't silently drift
+to a pre-1.7 major that this codebase's imports (e.g. better-auth/api's
+createAuthMiddleware, @better-auth/prisma-adapter) weren't written
+against. Re-ran `npm install` + `npm run typecheck`: clean, 0
+vulnerabilities.
