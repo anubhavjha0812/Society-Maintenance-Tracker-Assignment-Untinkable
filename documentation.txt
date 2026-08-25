@@ -777,3 +777,52 @@ region to `ohio` (Render's matching US-East region) and added a note in
 README's Setup section to also pick the matching Upstash region, since
 Redis calls happen inside the same request as Postgres calls and
 mismatched regions compound.
+
+-----------------------------------------------------------------------
+STEP 17 — Live-verified the three integrations Step 13 left untested
+-----------------------------------------------------------------------
+Date: 2026-08-25
+
+Step 13 verified Postgres/Prisma/Better-Auth/RBAC/idempotency against
+live infrastructure but explicitly left BullMQ job processing, R2
+uploads, and Resend sends unverified since those credentials were still
+placeholders. Real Neon and Upstash Redis credentials are now in
+backend/.env (R2 and Resend are still placeholders), so re-ran the
+outstanding checks against the actual running dev server:
+
+- Overdue sweep: backdated a seeded complaint's ComplaintStatusHistory
+  Open timestamp to 8 days ago, enqueued a one-off job on the real
+  overdue-sweep queue (real Upstash Redis), confirmed is_overdue flipped
+  false -> true within seconds via the live in-process worker. Pass.
+- Notification pipeline: found a real bug while testing this — BullMQ
+  rejects custom job IDs containing ":", but
+  backend/src/queue/queues.ts built job IDs like
+  `complaint_status_changed:${historyId}` and
+  `notice_posted:${noticeId}:${residentId}`. Every PATCH
+  /complaints/:id/status call was throwing ("Custom Id cannot contain :")
+  after the DB write had already committed, so the API returned 500 even
+  though the status change succeeded — silently broken since whenever
+  this code path was introduced. Same bug in notice fan-out. Fixed by
+  switching the separator to "_" in both idempotency keys (also used
+  verbatim as NotificationLog.idempotencyKey, so no other change needed).
+  Re-tested after the fix: status PATCH returns 200, notice POST fans out
+  to all residents, the worker picks up jobs from real Redis and calls
+  the real Resend API, which rejects with "API key is invalid" (expected
+  — RESEND_API_KEY is still the placeholder `re_placeholder`) and the
+  NotificationLog rows correctly land as status "failed" rather than
+  hanging or crashing. Pass, with the fix in place.
+- Media/R2: /media/presign itself returns a well-formed signed URL
+  (200), but R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/
+  R2_PUBLIC_BASE_URL in backend/.env are still literal placeholders, so
+  the actual PUT to R2 and the public GET-back can't be live-tested here
+  — blocked on the user creating a real Cloudflare R2 bucket/token, not a
+  code issue.
+- Also found and cleaned up ~20 stale/duplicate `tsx watch` dev-server
+  processes accumulated across prior sessions (only one was ever bound
+  to port 4000; the rest were harmless but pointless zombies).
+
+What's still remaining before this ships as a real deployment: real R2
+and Resend credentials (user-side account setup), and the actual
+Render/Vercel deploy click-through described in README's Deployment
+Guide — neither is something this assistant can complete on the user's
+behalf.

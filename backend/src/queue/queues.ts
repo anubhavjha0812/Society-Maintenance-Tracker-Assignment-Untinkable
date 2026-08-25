@@ -38,7 +38,10 @@ export type NotificationJobData = StatusChangeNotificationJob | NoticeFanoutJob;
 export async function enqueueStatusChangeNotification(
   args: Omit<StatusChangeNotificationJob, "type">,
 ) {
-  const idempotencyKey = `complaint_status_changed:${args.historyId}`;
+  // BullMQ rejects custom job IDs containing ":" (it uses colons as its own
+  // Redis key delimiter), so this can't use the more readable colon-joined
+  // form even though it's also stored verbatim as NotificationLog.idempotencyKey.
+  const idempotencyKey = `complaint_status_changed_${args.historyId}`;
   await notificationsQueue.add(
     "notify",
     { type: "complaint_status_changed", ...args } satisfies StatusChangeNotificationJob,
@@ -47,7 +50,7 @@ export async function enqueueStatusChangeNotification(
 }
 
 export async function enqueueNoticeFanout(args: Omit<NoticeFanoutJob, "type">) {
-  const idempotencyKey = `notice_posted:${args.noticeId}:${args.residentId}`;
+  const idempotencyKey = `notice_posted_${args.noticeId}_${args.residentId}`;
   await notificationsQueue.add(
     "notify",
     { type: "notice_posted", ...args } satisfies NoticeFanoutJob,
