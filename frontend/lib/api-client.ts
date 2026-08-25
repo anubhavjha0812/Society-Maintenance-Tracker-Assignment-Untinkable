@@ -101,6 +101,19 @@ export interface Society {
   name: string;
 }
 
+export interface SocietySettings extends Society {
+  overdueThresholdDays: number;
+}
+
+export interface Resident {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  flatNumber: string | null;
+  createdAt: string;
+}
+
 export interface DashboardSummary {
   totalOpen: number;
   totalInProgress: number;

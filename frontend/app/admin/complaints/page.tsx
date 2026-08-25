@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { AppShell } from "@/components/AppShell";
@@ -19,14 +19,25 @@ interface Filters {
   priority: string;
   from: string; // yyyy-mm-dd, from a native date input
   to: string; // yyyy-mm-dd, from a native date input
+  search: string;
 }
 
-const EMPTY_FILTERS: Filters = { category: "", status: "", priority: "", from: "", to: "" };
+const EMPTY_FILTERS: Filters = { category: "", status: "", priority: "", from: "", to: "", search: "" };
 
 export default function AdminComplaintsPage() {
   const { user } = useCurrentUser(["society_admin", "super_admin"]);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const hasActiveFilters = Object.values(filters).some(Boolean);
+
+  // Search is the one free-text filter — debounced so typing doesn't fire
+  // a request per keystroke the way the dropdown/date filters do per click.
+  const [searchInput, setSearchInput] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFilters((f) => (f.search === searchInput ? f : { ...f, search: searchInput }));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const { items, loading, loadingMore, nextCursor, loadMore } = usePaginatedList<Complaint>(
     (cursor) => {
@@ -40,9 +51,10 @@ export default function AdminComplaintsPage() {
       // day and "to" to the end of it (inclusive range).
       if (filters.from) params.set("from", new Date(`${filters.from}T00:00:00`).toISOString());
       if (filters.to) params.set("to", new Date(`${filters.to}T23:59:59`).toISOString());
+      if (filters.search) params.set("search", filters.search);
       return `/complaints?${params.toString()}`;
     },
-    [user?.id, filters.category, filters.status, filters.priority, filters.from, filters.to],
+    [user?.id, filters.category, filters.status, filters.priority, filters.from, filters.to, filters.search],
   );
 
   if (!user) return null;
@@ -55,6 +67,13 @@ export default function AdminComplaintsPage() {
       </p>
 
       <div className="mt-5 flex flex-wrap gap-3">
+        <Input
+          type="search"
+          placeholder="Search category or description…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="w-64"
+        />
         <Select
           value={filters.category}
           onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}
@@ -104,7 +123,14 @@ export default function AdminComplaintsPage() {
           className="w-auto"
         />
         {hasActiveFilters ? (
-          <Button variant="ghost" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearchInput("");
+              setFilters(EMPTY_FILTERS);
+            }}
+          >
             Clear filters
           </Button>
         ) : null}

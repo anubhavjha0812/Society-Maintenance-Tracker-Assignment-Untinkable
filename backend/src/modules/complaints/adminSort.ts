@@ -53,6 +53,7 @@ export interface AdminComplaintFilters {
   priority?: "Low" | "Medium" | "High";
   from?: string;
   to?: string;
+  search?: string;
   cursor: AdminComplaintCursor | null;
   limit: number;
 }
@@ -70,7 +71,7 @@ export interface AdminComplaintFilters {
  * comparison agree) so it needs no transform.
  */
 export function buildAdminComplaintQuery(filters: AdminComplaintFilters) {
-  const { societyId, category, status, priority, from, to, cursor, limit } = filters;
+  const { societyId, category, status, priority, from, to, search, cursor, limit } = filters;
 
   const conditions: Prisma.Sql[] = [Prisma.sql`society_id = ${societyId}`];
   if (category) conditions.push(Prisma.sql`category = ${category}`);
@@ -78,6 +79,7 @@ export function buildAdminComplaintQuery(filters: AdminComplaintFilters) {
   if (priority) conditions.push(Prisma.sql`priority = ${priority}::"Priority"`);
   if (from) conditions.push(Prisma.sql`created_at >= ${new Date(from)}`);
   if (to) conditions.push(Prisma.sql`created_at <= ${new Date(to)}`);
+  if (search) conditions.push(Prisma.sql`(category ILIKE ${`%${search}%`} OR description ILIKE ${`%${search}%`})`);
 
   if (cursor) {
     const rank = PRIORITY_RANK[cursor.priority];

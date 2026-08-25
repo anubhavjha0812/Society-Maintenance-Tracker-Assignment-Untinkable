@@ -67,6 +67,7 @@ export default async function complaintsRoutes(app: FastifyInstance) {
         priority?: Priority;
         from?: string;
         to?: string;
+        search?: string;
       };
       return listAdminComplaints(app.prisma, {
         societyId: user.societyId,
@@ -75,6 +76,7 @@ export default async function complaintsRoutes(app: FastifyInstance) {
         priority: query.priority,
         from: query.from,
         to: query.to,
+        search: query.search,
         cursor: decodeAdminCursor(query.cursor),
         limit: clampLimit(query.limit),
       });

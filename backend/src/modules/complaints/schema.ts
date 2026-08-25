@@ -36,6 +36,7 @@ export const listAdminSchema: FastifySchema = {
       priority: { type: "string", enum: ["Low", "Medium", "High"] },
       from: { type: "string", format: "date-time" },
       to: { type: "string", format: "date-time" },
+      search: { type: "string", minLength: 1, maxLength: 200 },
     },
   },
 };

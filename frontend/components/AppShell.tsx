@@ -16,6 +16,8 @@ const ADMIN_LINKS = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/complaints", label: "Complaints" },
   { href: "/admin/notices", label: "Notices" },
+  { href: "/admin/residents", label: "Residents" },
+  { href: "/admin/settings", label: "Settings" },
 ];
 
 export function AppShell({ user, children }: { user: CurrentUser; children: React.ReactNode }) {

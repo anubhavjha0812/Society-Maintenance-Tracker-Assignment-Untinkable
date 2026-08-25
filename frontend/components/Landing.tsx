@@ -43,7 +43,7 @@ export function Landing() {
         <section className="px-6 pb-16 pt-10 lg:px-16 lg:pb-24 lg:pt-16">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-xs font-medium uppercase tracking-wide text-clay">
-              Phase 0 · Multi-society MVP
+              Built for residential societies
             </p>
             <h1 className="mt-3 font-display text-display-md text-ink lg:text-display-lg">
               A record of upkeep for your building.
@@ -77,7 +77,7 @@ export function Landing() {
       </main>
 
       <footer className="px-6 py-8 text-center text-xs text-ink-faint lg:px-16">
-        Maintain · Phase 0 · Built to scale from a handful of societies to millions.
+        Maintain · Built to scale from a handful of societies to millions.
       </footer>
     </div>
   );

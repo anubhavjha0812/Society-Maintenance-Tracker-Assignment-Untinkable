@@ -12,6 +12,7 @@ import complaintsRoutes from "./modules/complaints/routes.js";
 import noticesRoutes from "./modules/notices/routes.js";
 import dashboardRoutes from "./modules/dashboard/routes.js";
 import mediaRoutes from "./modules/media/routes.js";
+import societyRoutes from "./modules/society/routes.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -68,6 +69,7 @@ export async function buildApp() {
       await instance.register(noticesRoutes);
       await instance.register(dashboardRoutes);
       await instance.register(mediaRoutes);
+      await instance.register(societyRoutes);
     },
     { prefix: "/api/v1" },
   );

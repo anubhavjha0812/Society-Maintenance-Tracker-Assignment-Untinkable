@@ -27,7 +27,7 @@ export function AuthLayout({
             nothing lost.
           </p>
         </div>
-        <p className="text-xs text-paper/40">Phase 0 · Multi-society MVP</p>
+        <p className="text-xs text-paper/40">Built for residential societies.</p>
       </div>
 
       <div className="flex flex-1 items-center justify-center px-6 py-16 lg:w-1/2">
