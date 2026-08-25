@@ -10,6 +10,16 @@ import { auth } from "./auth.js";
  * first-party adapter for.
  */
 export default async function authRoutes(app: FastifyInstance) {
+  // Public — registration needs to list societies to pick from before the
+  // visitor has an account, so this can't sit behind the RBAC middleware.
+  app.get("/societies", async () => {
+    const societies = await app.prisma.society.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    return { societies };
+  });
+
   app.route({
     method: ["GET", "POST"],
     url: "/auth/*",

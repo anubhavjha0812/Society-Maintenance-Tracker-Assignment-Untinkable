@@ -1,10 +1,22 @@
 "use client";
 
-import { useCurrentUser } from "@/lib/useCurrentUser";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "@/lib/auth-client";
+import { Landing } from "@/components/Landing";
+import type { CurrentUser } from "@/lib/types";
 
 export default function RootPage() {
-  // useCurrentUser handles the redirect to /login or the right home once
-  // the session resolves; this page just needs to exist as the target.
-  useCurrentUser();
-  return null;
+  // Signed-in visitors get redirected straight to their role's home; signed-
+  // out visitors see the public landing page instead of bouncing to /login.
+  const { data, isPending } = useSession();
+  const user = data?.user as unknown as CurrentUser | undefined;
+  const router = useRouter();
+
+  useEffect(() => {
+    if (user) router.replace(user.role === "resident" ? "/complaints" : "/admin");
+  }, [user, router]);
+
+  if (isPending || user) return null;
+  return <Landing />;
 }

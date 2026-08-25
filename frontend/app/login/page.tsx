@@ -37,7 +37,7 @@ export default function LoginPage() {
         <>
           New to your society?{" "}
           <Link href="/register" className="text-clay hover:underline">
-            Register with an invite code
+            Register
           </Link>
         </>
       }

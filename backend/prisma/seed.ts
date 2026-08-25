@@ -206,7 +206,6 @@ async function main() {
     });
 
     console.log(`✓ ${def.name}`);
-    console.log(`  invite code: ${def.inviteCode}`);
     console.log(`  admin: ${admin.email}`);
     console.log(`  residents: ${residents.map((r) => r.email).join(", ")}\n`);
   }

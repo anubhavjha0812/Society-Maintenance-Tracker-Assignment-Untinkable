@@ -7,10 +7,12 @@ import { env } from "../../config/env.js";
 const prisma = new PrismaClient();
 
 /**
- * Every society is seeded with an invite code (see prisma/seed.ts). A
- * resident signs up with { email, password, name, flatNumber, inviteCode }.
- * We never let the client set society_id or role directly — the invite
- * code is the only lever, and it's resolved server-side in this hook.
+ * A resident signs up with { email, password, name, flatNumber, societyId },
+ * picking societyId from GET /societies (routes.ts). We never let the
+ * client set role directly — this hook unconditionally overwrites it below.
+ * societyId itself is client-chosen (self-service society selection, one of
+ * the two MVP-acceptable flows per the spec — no invite code), so the only
+ * server-side check is that the id actually corresponds to a real society.
  * The one seeded admin per society is created directly by the seed script,
  * not through this public endpoint.
  */
@@ -72,17 +74,17 @@ export const auth = betterAuth({
       // deciding how to turn a hook's thrown error into a response
       // (anything else becomes an opaque 500 with no body), so an
       // AppError here would silently swallow this message.
-      const body = ctx.body as { inviteCode?: string } | undefined;
-      const inviteCode = body?.inviteCode?.trim();
-      if (!inviteCode) {
-        throw new APIError("BAD_REQUEST", { message: "inviteCode is required to register" });
+      const body = ctx.body as { societyId?: string } | undefined;
+      const societyId = body?.societyId?.trim();
+      if (!societyId) {
+        throw new APIError("BAD_REQUEST", { message: "societyId is required to register" });
       }
 
       const society = await prisma.society.findUnique({
-        where: { inviteCode },
+        where: { id: societyId },
       });
       if (!society) {
-        throw new APIError("BAD_REQUEST", { message: "Invalid invite code" });
+        throw new APIError("BAD_REQUEST", { message: "Unknown society" });
       }
 
       return {

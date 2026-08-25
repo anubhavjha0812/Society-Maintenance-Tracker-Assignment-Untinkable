@@ -13,13 +13,12 @@ export async function signUp(input: {
   name: string;
   email: string;
   password: string;
-  inviteCode: string;
+  societyId: string;
   flatNumber?: string;
   phone?: string;
 }) {
-  // `inviteCode` isn't a stored user field (so it isn't declared in the
-  // backend's additionalFields), only a transient input the backend's
-  // sign-up `before` hook reads to resolve societyId — the generated
-  // client type doesn't know about it, hence the cast.
+  // societyId is a stored user field (additionalFields in auth.ts), but the
+  // generated client type doesn't know that's a valid sign-up input, hence
+  // the cast — the backend's sign-up `before` hook validates and injects it.
   return authClient.signUp.email(input as unknown as Parameters<typeof authClient.signUp.email>[0]);
 }

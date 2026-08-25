@@ -17,7 +17,7 @@
 ## ✨ Features
 
 - **Multi-Tenant Architecture**: Securely manage multiple societies within a single deployment.
-- **Robust Authentication**: Powered by Better-Auth with secure email/password and invite-code registration.
+- **Robust Authentication**: Powered by Better-Auth with secure email/password and self-service society selection at registration.
 - **Role-Based Access**: Distinct resident and admin views tailored to specific needs.
 - **Real-Time Issue Tracking**: File, track, and resolve complaints with an append-only status history.
 - **High-Performance API**: Built on Fastify 5, featuring cursor pagination and idempotent operations.
@@ -85,7 +85,7 @@ npm install
 npm run dev            # Starts the web app at http://localhost:3000
 ```
 
-> **Demo Access**: After seeding, log in at `/login` using any seeded email (password: `Password123!`) or register a new account at `/register` using an invite code from the seed output.
+> **Demo Access**: After seeding, log in at `/login` using any seeded email (password: `Password123!`) or register a new account at `/register`, picking your society from the dropdown.
 
 ---
 

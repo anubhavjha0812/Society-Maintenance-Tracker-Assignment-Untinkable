@@ -96,6 +96,11 @@ export interface Notice {
   createdAt: string;
 }
 
+export interface Society {
+  id: string;
+  name: string;
+}
+
 export interface DashboardSummary {
   totalOpen: number;
   totalInProgress: number;

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signUp } from "@/lib/auth-client";
+import { api, type Society } from "@/lib/api-client";
 import { AuthLayout } from "@/components/AuthLayout";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 
 export default function RegisterPage() {
@@ -14,12 +15,23 @@ export default function RegisterPage() {
     name: "",
     email: "",
     password: "",
-    inviteCode: "",
+    societyId: "",
     flatNumber: "",
     phone: "",
   });
+  const [societies, setSocieties] = useState<Society[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<{ societies: Society[] }>("/societies")
+      .then(({ societies }) => {
+        setSocieties(societies);
+        setForm((f) => (f.societyId ? f : { ...f, societyId: societies[0]?.id ?? "" }));
+      })
+      .catch(() => setError("Could not load societies — try refreshing."));
+  }, []);
 
   function update<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -42,7 +54,7 @@ export default function RegisterPage() {
     <AuthLayout
       eyebrow="Register"
       title="Join your society"
-      subtitle="Ask your society admin for the invite code if you don't have one."
+      subtitle="Pick your society below to get started."
       footer={
         <>
           Already have an account?{" "}
@@ -89,13 +101,20 @@ export default function RegisterPage() {
             <Input id="phone" value={form.phone} onChange={(e) => update("phone", e.target.value)} />
           </Field>
         </div>
-        <Field label="Invite code" htmlFor="inviteCode">
-          <Input
-            id="inviteCode"
+        <Field label="Society" htmlFor="societyId">
+          <Select
+            id="societyId"
             required
-            value={form.inviteCode}
-            onChange={(e) => update("inviteCode", e.target.value.toUpperCase())}
-          />
+            value={form.societyId}
+            onChange={(e) => update("societyId", e.target.value)}
+          >
+            {societies.length === 0 ? <option value="">Loading…</option> : null}
+            {societies.map((society) => (
+              <option key={society.id} value={society.id}>
+                {society.name}
+              </option>
+            ))}
+          </Select>
         </Field>
         {error ? <p className="text-sm text-rose">{error}</p> : null}
         <Button type="submit" disabled={loading} className="w-full">

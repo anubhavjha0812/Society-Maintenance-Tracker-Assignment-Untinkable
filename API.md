@@ -55,12 +55,25 @@ Bridged directly to [Better-Auth](https://better-auth.com)'s own request
 handler (`backend/src/modules/auth/routes.ts`), so this app doesn't
 reimplement auth endpoints — the ones actually used by the frontend:
 
+### `GET /societies`
+
+Public, unauthenticated. Lists societies for the registration form's
+society picker.
+
+```json
+// 200 response
+{ "societies": [{ "id": "...", "name": "Willowbrook Residency" }, ...] }
+```
+
 ### `POST /auth/sign-up/email`
 
-Registers a **resident**. `society_id` and `role` are never
-client-settable — the invite code resolves them server-side (see
-`backend/src/modules/auth/auth.ts`'s sign-up hook). The one admin per
-seeded society is created by `prisma/seed.ts`, not through this endpoint.
+Registers a **resident**. `role` is never client-settable — this hook
+unconditionally overwrites it (see `backend/src/modules/auth/auth.ts`'s
+sign-up hook). `societyId` **is** client-chosen, picked from
+`GET /societies` (self-service society selection, no invite code) — the
+hook's only check is that the id corresponds to a real society. The one
+admin per seeded society is created by `prisma/seed.ts`, not through this
+endpoint.
 
 ```json
 // Request
@@ -68,7 +81,7 @@ seeded society is created by `prisma/seed.ts`, not through this endpoint.
   "name": "Rahul Mehta",
   "email": "rahul@willowbrook.test",
   "password": "Password123!",   // min 8 chars
-  "inviteCode": "WILLOW01",
+  "societyId": "...",
   "flatNumber": "A-101",         // optional
   "phone": "+91..."              // optional
 }
@@ -85,8 +98,8 @@ seeded society is created by `prisma/seed.ts`, not through this endpoint.
   }
 }
 ```
-Sets the session cookie. `400` with `{"message":"Invalid invite code"}` or
-`{"message":"inviteCode is required to register"}` on a bad/missing code.
+Sets the session cookie. `400` with `{"message":"Unknown society"}` or
+`{"message":"societyId is required to register"}` on a bad/missing id.
 
 ### `POST /auth/sign-in/email`
 
